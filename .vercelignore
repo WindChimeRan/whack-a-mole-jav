@@ -1,0 +1,11 @@
+.env
+.env.*
+.vercel/
+node_modules/
+dist/
+docs/
+coverage/
+server.js
+server.test.js
+ORIGINAL_LICENSE.txt
+README.md
