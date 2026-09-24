@@ -148,7 +148,7 @@ JEV_BASE_URL=http://192.168.1.42:8011 npm run bridge</code></pre>
     <section class="prompt-panel" aria-labelledby="promptTitle">
       <div class="prompt-heading"><div><p class="eyebrow">IMAGE INPUT · ONE DECISION</p><h2 id="promptTitle">What the model sees</h2></div><p>Each decision sends the live board image and this prompt. The response is limited to <code>h1</code>–<code>h9</code> or <code>wait</code>.</p></div>
       <div class="prompt-grid">
-        <div class="prompt-block"><span>PROMPT + BOARD IMAGE</span><pre id="imagePrompt">Pick a visible brown or gold mole. Prefer gold. Do not hit a gray bomb with an orange fuse or an empty hole. Reply with only h1 through h9 for the number nearest the mole face, or wait if no mole is visible.</pre></div>
+        <div class="prompt-block"><span>PROMPT + BOARD IMAGE</span><pre id="imagePrompt">Reply with the number printed closest to a visible brown or gold mole face, as h1 through h9. If the board has no visible mole face, reply wait. Never hit a bomb.</pre></div>
         <div class="prompt-block"><span>EXAMPLE OUTPUT</span><pre>h5</pre><small>A mole is visible at the center hole. With no mole, the output is <code>wait</code>.</small></div>
       </div>
     </section>

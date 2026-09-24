@@ -1,5 +1,5 @@
 export const metalChoices = [...Array.from({ length: 9 }, (_, index) => `h${index + 1}`), 'wait'];
-export const metalImagePrompt = 'Pick a visible brown or gold mole. Prefer gold. Do not hit a gray bomb with an orange fuse or an empty hole. Reply with only h1 through h9 for the number nearest the mole face, or wait if no mole is visible.';
+export const metalImagePrompt = 'Reply with the number printed closest to a visible brown or gold mole face, as h1 through h9. If the board has no visible mole face, reply wait. Never hit a bomb.';
 
 export function createMetalRequest(input, metalModel) {
   const occupied = input.mode === 'text' ? input.holes.flatMap((hole, index) => hole
@@ -10,7 +10,7 @@ export function createMetalRequest(input, metalModel) {
       { type: 'text', text: metalImagePrompt },
       { type: 'image_url', image_url: { url: input.image } },
     ]
-    : `${occupied.length ? `${occupied.join(' ')} Other holes: empty.` : 'All holes are empty.'} Pick a brown or gold mole. Prefer gold. Do not hit a bomb or empty hole. Reply with only h1 through h9, or wait if no mole is present.`;
+    : `${occupied.length ? `${occupied.join(' ')} Other holes: empty.` : 'All holes are empty.'} Which numbered hole contains a brown or gold mole? Prefer gold. Reply with just the number, or wait if none.`;
   return {
     model: metalModel,
     temperature: 0,
