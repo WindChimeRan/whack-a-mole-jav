@@ -49,7 +49,7 @@ For the local Node proxy path, set `JEV_BASE_URL` in `.env` to a server acceptin
 | --- | --- |
 | **Local model** (default) | The model chooses `h1`–`h9` or `wait`. Image input is selected by default; Text sends occupants and remaining lifetimes. |
 | **Human** | Click a hole or press `1`–`9`. Score, escaped moles, empty swings, and spawn-to-click reaction time appear live. |
-| **Local Jev** | The optional DGX Spark DiffusionGemma server chooses through the Jev-style API in the local app. |
+| **Local Jev** | The optional DGX Spark DiffusionGemma server chooses through Jev's structured API. On Vercel, use the local bridge or a Jev server with CORS support. |
 | **Demo** | A scripted browser player previews the game without inference. |
 
 The default round lasts 30 seconds. A mole appears every 600 ms and stays for 1,100 ms. Brown moles score +1, gold moles +3, and bombs −2. **Load image test preset** restores those settings and seed `42`. Use the same seed and pressure controls to compare scores; the spawn-plan checksum appears beside the live statistics. **Replay round** restarts the selected player with the same settings.
