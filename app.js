@@ -1,19 +1,18 @@
 import { createMetalRequest, parseMetalChoice } from './metal-client.js';
-import { defaultModelId, parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
+import { defaultModelId, legacyModelAlias, modelIdForInput, parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
 import { defaultJevModel, makeJevRequest, parseJevDecision } from './jev-client.js';
 
 const $ = (id) => document.getElementById(id);
 const hostedBrowserModel = location.protocol === 'https:' || new URLSearchParams(location.search).get('direct') === '1';
 const defaultModelBaseUrl = 'http://127.0.0.1:8012';
 const defaultJevBaseUrl = hostedBrowserModel ? 'http://127.0.0.1:8013' : 'http://127.0.0.1:8011';
-const legacyModelAlias = 'qwen35-metal';
 const modelSettingsKey = 'moleLabModelConnection';
 const jevSettingsKey = 'moleLabJevConnection';
 const savedModelSettings = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(modelSettingsKey) || 'null');
     if (typeof saved?.baseUrl === 'string' && typeof saved?.modelId === 'string') {
-      return { connection: parseModelBaseUrl(saved.baseUrl), modelId: saved.modelId.trim() };
+      return { connection: parseModelBaseUrl(saved.baseUrl), modelId: modelIdForInput(saved.modelId.trim()) };
     }
   } catch { /* Ignore invalid or unavailable browser storage. */ }
   return null;
@@ -60,7 +59,7 @@ function seededRandom(seed) {
 
 const game = {
   phase: 'idle', mode: 'metal', inputMode: 'image', holes: Array(9).fill(null), score: 0,
-  hits: 0, missed: 0, bombs: 0, stale: 0, emptyAtInput: 0, expiredInFlight: 0, decisions: 0, errors: 0,
+  hits: 0, moleHits: 0, goldHits: 0, waits: 0, missed: 0, bombs: 0, stale: 0, emptyAtInput: 0, expiredInFlight: 0, decisions: 0, errors: 0,
   reactionMin: Infinity, reactionMax: 0,
   latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
   startedAt: 0, elapsedMs: 0, pausedAt: 0,
@@ -80,7 +79,7 @@ let jevEndpoint = useDirectJev ? jevConnection.endpoint : 'localhost:8011/v1/sys
 let metalEndpoint = metalConnection.endpoint;
 
 $('modelBaseUrl').value = metalConnection.baseUrl;
-$('modelId').value = metalModelName;
+$('modelId').value = modelIdForInput(metalModelName);
 $('jevBaseUrl').value = jevConnection.baseUrl;
 
 function playerName() {
@@ -260,6 +259,20 @@ function renderChart() {
   });
 }
 
+function renderOutcomes() {
+  const outcomes = [
+    ['mole', game.moleHits], ['gold', game.goldHits], ['miss', game.stale],
+    ['bomb', game.bombs], ['wait', game.waits],
+  ];
+  const scale = Math.max(1, ...outcomes.map(([, count]) => count));
+  for (const [name, count] of outcomes) {
+    $(`${name}Count`).textContent = count;
+    $(`${name}Bar`).style.width = `${count / scale * 100}%`;
+  }
+  $('outcomeBars').setAttribute('aria-label',
+    `Round outcomes: ${game.moleHits} mole hits, ${game.goldHits} gold hits, ${game.stale} misses, ${game.bombs} bomb hits, ${game.waits} waits`);
+}
+
 function averageMs(total, count) {
   if (!count) return '—';
   const average = total / count;
@@ -394,7 +407,9 @@ function render() {
     : !connectionChecked ? game.mode === 'jev' ? 'Set your DGX Spark server above, then click Connect.' : useDirectModel ? 'Set a vLLM-compatible server above, then click Connect.' : 'Checking model servers…'
     : game.mode === 'jev' ? jevConnectionIssue || `DGX Spark Jev server: ${connected ? 'ready' : 'offline'}.`
       : modelConnectionIssue || `${modelDisplayName(metalModelName)}: ${metalConnected ? 'ready' : 'offline'}.`;
-  $('modelSettingsHint').textContent = modelSettingsIssue || 'Connect reads model IDs from the server. URL and ID are saved here; the key stays in this tab.';
+  $('modelSettingsHint').textContent = modelSettingsIssue || (metalConnected && metalModelName === legacyModelAlias
+    ? 'This server uses a custom Qwen alias. Mole Lab selects it for requests; the field shows the canonical model ID.'
+    : 'Connect reads model IDs from the server. URL and ID are saved here; the key stays in this tab.');
   $('jevSettingsHint').textContent = jevSettingsIssue || 'The URL is saved in this browser; the key stays in this tab.';
   $('controlHint').textContent = game.mode === 'human'
     ? 'Click a hole or press 1–9. Use the same seed and pressure settings to compare your score.'
@@ -418,7 +433,7 @@ function abortDecision() {
 function resetGame() {
   abortDecision();
   Object.assign(game, {
-    phase: 'idle', holes: Array(9).fill(null), score: 0, hits: 0,
+    phase: 'idle', holes: Array(9).fill(null), score: 0, hits: 0, moleHits: 0, goldHits: 0, waits: 0,
     missed: 0, bombs: 0, stale: 0, emptyAtInput: 0, expiredInFlight: 0, decisions: 0, errors: 0,
     reactionMin: Infinity, reactionMax: 0,
     latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
@@ -431,6 +446,7 @@ function resetGame() {
   $('eventFeed').innerHTML = '<li class="feed-empty">The action starts when you launch a round.</li>';
   $('feedCount').textContent = '0 EVENTS';
   renderChart();
+  renderOutcomes();
   render();
 }
 
@@ -516,6 +532,7 @@ function whack(index, timing = '', human = false, observedHole = null) {
   const label = `Hole ${index + 1}`;
   if (!target) {
     game.stale++;
+    renderOutcomes();
     showImpact(index, 'MISS', 'miss');
     if (human) {
       event(`${label} was empty`, 'MISS', 'stale');
@@ -541,8 +558,12 @@ function whack(index, timing = '', human = false, observedHole = null) {
     timing = `${reactionMs} ms reaction`;
   }
   game.score += points;
-  if (points > 0) game.hits++;
-  else game.bombs++;
+  if (points > 0) {
+    game.hits++;
+    if (target.kind === 'gold') game.goldHits++;
+    else game.moleHits++;
+  } else game.bombs++;
+  renderOutcomes();
   showImpact(index, points > 0 ? `+${points} HIT` : '−2 BOMB', target.kind === 'gold' ? 'gold' : points > 0 ? 'hit' : 'bomb');
   game.holes[index] = null;
   game.boardVersion++;
@@ -660,6 +681,8 @@ async function decide() {
     if (result.invalidOutput) event('Unrecognized model answer; waiting', timing, 'error');
     const index = /^h[1-9]$/.test(result.choice) ? Number(result.choice.slice(1)) - 1 : -1;
     if (index < 0) {
+      game.waits++;
+      renderOutcomes();
       event('Chose to wait', timing);
       game.nextDecisionAt = Date.now() + 70;
     } else {
@@ -740,7 +763,7 @@ async function loadConnection() {
         metalConnected = Boolean(status.metalConnected);
         metalModelName = status.metalModel || metalModelName;
         metalEndpoint = status.metalEndpoint ? `${status.metalEndpoint}/v1/chat/completions` : metalEndpoint;
-        $('modelId').value = metalModelName;
+        $('modelId').value = modelIdForInput(metalModelName);
       }
     } catch {
       if (checkId !== connectionCheckId) return;
@@ -770,13 +793,14 @@ async function loadConnection() {
         modelConnectionIssue = 'The server returned no models.';
       } else if (ids.length === 1 && !ids.includes(metalModelName)) {
         metalModelName = ids[0];
-        $('modelId').value = metalModelName;
-        try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: metalConnection.baseUrl, modelId: metalModelName })); } catch { /* Storage is optional. */ }
+        $('modelId').value = modelIdForInput(metalModelName);
+        try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: metalConnection.baseUrl, modelId: modelIdForInput(metalModelName) })); } catch { /* Storage is optional. */ }
         metalConnected = true;
       } else {
         metalConnected = ids.includes(metalModelName);
         if (!metalConnected) modelConnectionIssue = `Model ${metalModelName} is not listed by this server. Choose one in Model ID.`;
       }
+      if (metalConnected) $('modelId').value = modelIdForInput(metalModelName);
     } catch (error) {
       if (checkId !== connectionCheckId) return;
       metalConnected = false;
@@ -822,7 +846,8 @@ $('applyModelSettings').addEventListener('click', () => {
     useDirectModel = true;
     metalConnected = false;
     modelSettingsIssue = '';
-    try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: connection.baseUrl, modelId })); } catch { /* Storage is optional. */ }
+    $('modelId').value = modelIdForInput(modelId);
+    try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: connection.baseUrl, modelId: modelIdForInput(modelId) })); } catch { /* Storage is optional. */ }
     resetGame();
     void loadConnection();
   } catch (error) {
@@ -953,6 +978,7 @@ document.addEventListener('keydown', (event_) => {
 });
 
 renderChart();
+renderOutcomes();
 render();
 if (!hostedBrowserModel) loadConnection();
 setInterval(tick, 10);

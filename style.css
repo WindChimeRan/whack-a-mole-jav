@@ -79,3 +79,19 @@
 .setup-source{margin:17px 0 0}
 @media(max-width:800px){.setup-heading{display:block}.setup-heading p:last-child{margin-top:11px}.setup-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.topbar-link{margin-left:0}.github-link{width:27px;height:27px}.setup-section{padding:17px}.setup-heading h2{font-size:24px}}
+.setup-callout{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 20px;max-width:680px;margin-top:16px;padding:12px 14px;background:#22382c;border:1px solid #567251;border-radius:12px}
+.setup-callout strong{color:#f4c66d;font-size:10px;letter-spacing:.14em}
+.setup-callout p{margin:4px 0 0;color:#bfd1ba;font-size:11px;line-height:1.35}
+.setup-callout a{color:#d9edac;font-size:12px;font-weight:850;text-underline-offset:3px}
+.setup-callout a:hover{color:#f5c665}
+.board-card{display:flex;flex-direction:column}
+.outcome-card{margin-top:auto;padding:24px 0 3px}
+.outcome-header{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #3c5141;padding-top:16px;color:#d9e8d6;font-size:11px;font-weight:850;letter-spacing:.12em}
+.outcome-header small{color:#8da491;font-size:10px;font-weight:650;letter-spacing:0;text-align:right}
+.outcome-bars{display:grid;gap:10px;margin-top:15px}
+.outcome-row{display:grid;grid-template-columns:95px minmax(0,1fr) 32px;gap:12px;align-items:center;color:#a9bdaa;font-size:10px;font-weight:850;letter-spacing:.08em}
+.outcome-row strong{text-align:right;color:#edf4e8;font-size:14px;font-variant-numeric:tabular-nums}
+.outcome-track{height:9px;border-radius:10px;background:#314637;overflow:hidden}
+.outcome-track i{display:block;width:0;height:100%;border-radius:10px;transition:width .25s ease}
+.outcome-row.mole i{background:#bf886d}.outcome-row.gold i{background:#efc85f}.outcome-row.miss i{background:#d58070}.outcome-row.bomb i{background:#7a8580}.outcome-row.wait i{background:#a5c69d}
+@media(max-width:700px){.setup-callout{display:block;margin-top:12px}.setup-callout a{display:inline-block;margin-top:8px}.outcome-header{display:block}.outcome-header small{display:block;text-align:left;margin-top:6px}.outcome-row{grid-template-columns:77px minmax(0,1fr) 28px;gap:8px}}

@@ -8,7 +8,14 @@
 
 Open **[mole-lab.vercel.app](https://mole-lab.vercel.app)** in Chrome. The page has setup steps for both model backends and a link to this repository. **Human** and **Demo** work immediately. For model play, start a local or LAN server and click **Connect**. Chrome may ask for local network access. The board image or text state goes from your browser to your model server or local Jev bridge; Vercel does not proxy inference.
 
-For the default Qwen image and text player, install [vLLM-metal](https://github.com/vllm-project/vllm-metal#installation) on an Apple Silicon Mac and run:
+For the default Qwen image and text player, install [vLLM-metal](https://docs.vllm.ai/projects/vllm-metal/en/latest/installation/) on an Apple Silicon Mac with Homebrew:
+
+```sh
+brew tap vllm-project/vllm-metal https://github.com/vllm-project/vllm-metal
+brew install vllm-project/vllm-metal/vllm-metal
+```
+
+Then launch the server:
 
 ```sh
 VLLM_METAL_MULTIMODAL_MODE=multimodal-native \
@@ -52,7 +59,7 @@ For the local Node proxy path, set `JEV_BASE_URL` in `.env` to a server acceptin
 | **Local Jev** | The optional DGX Spark DiffusionGemma server chooses through Jev's structured API. On Vercel, use the local bridge or a Jev server with CORS support. |
 | **Demo** | A scripted browser player previews the game without inference. |
 
-The default round lasts 30 seconds. A mole appears every 600 ms and stays for 1,100 ms. Brown moles score +1, gold moles +3, and bombs −2. **Load image test preset** restores those settings and seed `42`. Use the same seed and pressure controls to compare scores; the spawn-plan checksum appears beside the live statistics. **Replay round** restarts the selected player with the same settings.
+The default round lasts 30 seconds. A mole appears every 600 ms and stays for 1,100 ms. Brown moles score +1, gold moles +3, and bombs −2. The arena chart counts mole hits, gold hits, empty whacks, bomb hits, and waits; escaped moles appear in telemetry. **Load image test preset** restores those settings and seed `42`. Use the same seed and pressure controls to compare scores; the spawn-plan checksum appears beside the live statistics. **Replay round** restarts the selected player with the same settings.
 
 ### DGX Spark replay
 

@@ -1,4 +1,9 @@
 export const defaultModelId = 'Qwen/Qwen3.5-0.8B';
+export const legacyModelAlias = 'qwen35-metal';
+
+export function modelIdForInput(servedId) {
+  return servedId === legacyModelAlias ? defaultModelId : servedId;
+}
 
 export function parseModelBaseUrl(raw) {
   const value = raw.trim();

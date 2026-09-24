@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
+import { defaultModelId, modelIdForInput, parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
 
 test('model URL accepts a local host and a standard /v1 suffix', () => {
   assert.deepEqual(parseModelBaseUrl('127.0.0.1:8012'), {
@@ -29,4 +29,9 @@ test('Jev URL accepts the server root or decision endpoint', () => {
     endpoint: '10.0.0.33:8000/v1/systemone',
   });
   assert.equal(parseJevBaseUrl('localhost:8011').decisionUrl, 'http://localhost:8011/v1/systemone');
+});
+
+test('legacy served alias appears as the canonical Qwen ID in settings', () => {
+  assert.equal(modelIdForInput('qwen35-metal'), defaultModelId);
+  assert.equal(modelIdForInput('my-other-model'), 'my-other-model');
 });
