@@ -94,14 +94,48 @@ export function makeJevRequest({ mode = 'text', holes, image, score, samples = 1
   };
 }
 
+export function makeMetalRequest(input, metalModel) {
+  makeJevRequest(input); // Share the same bounded game-state validation.
+  const occupied = input.mode === 'text' ? input.holes.flatMap((hole, index) => hole
+    ? [`Hole ${index + 1}: ${hole.kind === 'gold' ? 'gold mole' : hole.kind === 'mole' ? 'brown mole' : 'bomb'} (${Math.round(hole.msLeft)} ms left).`]
+    : []) : [];
+  const userContent = input.mode === 'image'
+    ? [
+      { type: 'text', text: 'Which numbered hole contains a visible brown or gold mole face? Ignore score popups and hammers. Reply only h1..h9 or wait.' },
+      { type: 'image_url', image_url: { url: input.image } },
+    ]
+    : `${occupied.length ? `${occupied.join(' ')} Other holes: empty.` : 'All holes are empty.'} Which numbered hole contains a brown or gold mole? Prefer gold. Reply with just the number, or wait if none.`;
+  return {
+    model: metalModel,
+    temperature: 0,
+    max_tokens: 16,
+    messages: [
+      { role: 'user', content: userContent },
+    ],
+  };
+}
+
+export function parseMetalChoice(raw) {
+  if (typeof raw !== 'string') return null;
+  const answer = raw.trim().replace(/^[`"']+|[`"'.!]+$/g, '').toLowerCase();
+  if (/^(h[1-9]|wait)$/.test(answer)) return answer;
+  const number = answer.match(/^(?:hole\s*#?\s*)?0?([1-9])$/);
+  return number ? `h${number[1]}` : null;
+}
+
 export function createAppServer({
   fetchImpl = fetch,
   baseUrl = process.env.JEV_BASE_URL || 'http://127.0.0.1:8011',
   key = process.env.JEV_API_KEY || '',
+  metalUrl = process.env.METAL_BASE_URL || '',
+  metalModel = process.env.METAL_MODEL || 'Qwen/Qwen3.5-0.8B',
+  metalKey = process.env.METAL_API_KEY || '',
 } = {}) {
   const decisionUrl = new URL('/v1/systemone', baseUrl).toString();
   const healthUrl = new URL('/health', baseUrl).toString();
   const endpoint = new URL(baseUrl).host;
+  const metalDecisionUrl = metalUrl ? new URL('/v1/chat/completions', metalUrl).toString() : null;
+  const metalHealthUrl = metalUrl ? new URL('/health', metalUrl).toString() : null;
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     try {
@@ -110,17 +144,63 @@ export function createAppServer({
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let connected = false;
+        let metalConnected = false;
         try {
           const response = await fetchImpl(healthUrl, { signal: AbortSignal.timeout(2_000) });
           connected = response.ok;
         } catch {
           connected = false;
         }
-        return json(res, 200, { connected, model, endpoint });
+        if (metalHealthUrl) {
+          try {
+            const response = await fetchImpl(metalHealthUrl, { signal: AbortSignal.timeout(2_000) });
+            metalConnected = response.ok;
+          } catch {
+            metalConnected = false;
+          }
+        }
+        return json(res, 200, {
+          connected, model, endpoint,
+          metalConfigured: Boolean(metalDecisionUrl), metalConnected,
+          metalModel, metalEndpoint: metalUrl ? new URL(metalUrl).host : null,
+        });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/decide') {
-        const payload = makeJevRequest(await readJson(req));
+        const input = await readJson(req);
+        const backend = input.backend || 'jev';
+        if (backend === 'metal') {
+          if (!metalDecisionUrl) return json(res, 503, { error: 'Qwen Metal backend is not configured.' });
+          const payload = makeMetalRequest(input, metalModel);
+          const started = performance.now();
+          let response;
+          try {
+            response = await fetchImpl(metalDecisionUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(metalKey ? { Authorization: `Bearer ${metalKey}` } : {}),
+              },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(8_000),
+            });
+          } catch (error) {
+            return json(res, 502, { error: `Could not reach Qwen Metal: ${error.name === 'TimeoutError' ? 'request timed out' : 'network error'}.` });
+          }
+          if (!response.ok) return json(res, 502, { error: `Qwen Metal returned HTTP ${response.status}.` });
+          const result = await response.json();
+          const raw = result?.choices?.[0]?.message?.content;
+          const choice = parseMetalChoice(raw);
+          const proxyMs = Math.round(performance.now() - started);
+          return json(res, 200, {
+            choice: choice || 'wait', invalidOutput: !choice,
+            model: result.model || metalModel,
+            inputTokens: result.usage?.prompt_tokens ?? null,
+            modelMs: proxyMs, proxyMs, timingSource: 'local_proxy_round_trip',
+          });
+        }
+        if (backend !== 'jev') return json(res, 400, { error: 'Unknown backend.' });
+        const payload = makeJevRequest(input);
         const started = performance.now();
         let response;
         try {

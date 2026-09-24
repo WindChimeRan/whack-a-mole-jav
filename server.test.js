@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAppServer, makeJevRequest } from './server.js';
+import { createAppServer, makeJevRequest, makeMetalRequest, parseMetalChoice } from './server.js';
 
 const board = [null, { kind: 'gold', msLeft: 430 }, null, null, { kind: 'bomb', msLeft: 900 }, null, null, null, null];
 const image = 'data:image/png;base64,AAAA';
@@ -21,6 +21,52 @@ test('image request carries board pixels without the text occupancy list', () =>
   assert.equal(request.samples, 'auto');
   assert.equal('holes' in request.state, false);
   assert.equal(request.questions.action.type, 'choice');
+});
+
+test('Qwen Metal requests keep image observations visual and parse bounded labels', () => {
+  const textRequest = makeMetalRequest({ mode: 'text', holes: board, score: 4, samples: 1 }, 'qwen35-metal');
+  assert.match(textRequest.messages[0].content, /Hole 2: gold mole \(430 ms left\)/);
+  const imageRequest = makeMetalRequest({ mode: 'image', image, score: 4, samples: 1 }, 'qwen35-metal');
+  assert.equal(imageRequest.messages[0].content[1].image_url.url, image);
+  assert.equal(JSON.stringify(imageRequest).includes('gold mole (430'), false);
+  assert.equal(parseMetalChoice('h3'), 'h3');
+  assert.equal(parseMetalChoice('Wait'), 'wait');
+  assert.equal(parseMetalChoice('3'), 'h3');
+  assert.equal(parseMetalChoice('h1 h3'), null);
+});
+
+test('optional Qwen Metal backend proxies chat completions separately', async () => {
+  let observed;
+  const server = createAppServer({
+    baseUrl: 'http://192.0.2.10:8011', metalUrl: 'http://127.0.0.1:8012', metalModel: 'qwen35-metal',
+    fetchImpl: async (url, options) => {
+      if (url.endsWith('/health')) return new Response('{}', { status: 200 });
+      observed = { url, options };
+      return new Response(JSON.stringify({
+        model: 'qwen35-metal',
+        choices: [{ message: { content: 'h2' } }],
+        usage: { prompt_tokens: 90 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = `http://127.0.0.1:${server.address().port}`;
+    const status = await (await fetch(`${address}/api/status`)).json();
+    assert.equal(status.connected, true);
+    assert.equal(status.metalConnected, true);
+    const response = await fetch(`${address}/api/decide`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend: 'metal', mode: 'text', holes: board, score: 0, samples: 1 }),
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.choice, 'h2');
+    assert.equal(result.timingSource, 'local_proxy_round_trip');
+    assert.equal(observed.url, 'http://127.0.0.1:8012/v1/chat/completions');
+  } finally {
+    server.close();
+  }
 });
 
 test('local server checks health and proxies a decision to the structured port', async () => {

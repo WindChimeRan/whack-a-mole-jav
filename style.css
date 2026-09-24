@@ -25,6 +25,9 @@
 .quick-input .segmented button{padding:8px}
 .quick-input .preset-button{margin-top:7px;padding:7px 9px}
 .quick-input .preset-button span{font-size:9px}
+.quick-input .input-label{margin-top:10px}
+.backend-options button{font-size:10px;padding:8px 4px}
+.control-grid{grid-template-columns:1fr 1fr .9fr}
 .control-footer{padding-top:14px;margin-top:15px}
 @media(max-width:1100px){.quick-card{grid-template-columns:1fr 1fr}.quick-play{grid-column:1/-1}}
 @media(max-width:700px){.intro{padding:16px 0 12px}.intro h1{font-size:39px;margin:5px 0 7px}.intro-copy{font-size:12px;line-height:1.35}.connection-card{margin-top:12px;padding:10px 12px;border-radius:12px}.connection-card .microcopy{font-size:9px;margin-top:5px}.quick-card{display:grid;grid-template-columns:1fr;gap:10px;padding:12px 13px;margin-bottom:12px}.quick-play{grid-column:auto}.quick-buttons{margin-top:7px}.quick-buttons button{padding:10px 8px}.quick-result strong{font-size:23px;margin-top:3px}.quick-input .segmented{margin-top:5px}.quick-input .preset-button{margin-top:6px}}

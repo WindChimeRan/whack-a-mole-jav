@@ -33,7 +33,16 @@ const game = {
   spawnAttempts: 0, spawned: 0, scheduleHash: 2166136261,
 };
 let connected = false;
-let actualModel = 'jev-latest';
+let metalConfigured = false;
+let metalConnected = false;
+let jevModelName = 'jev-latest';
+let metalModelName = 'Qwen/Qwen3.5-0.8B';
+let jevEndpoint = 'localhost:8011';
+let metalEndpoint = 'localhost:8012';
+
+function playerName() {
+  return game.mode === 'metal' ? 'Qwen Metal' : game.mode === 'jev' ? 'Local Jev' : 'Demo bot';
+}
 
 function formatSeconds(ms) {
   return `${Number((ms / 1000).toFixed(2))} s`;
@@ -228,8 +237,19 @@ function render() {
   $('prepStat').textContent = averageMs(game.timing.prepTotal, game.timing.count);
   $('roundtripStat').textContent = averageMs(game.timing.tripTotal, game.timing.count);
   $('scheduleStat').textContent = `Seed ${game.seed} · ${game.spawned}/${game.spawnAttempts} spawns · plan ${game.scheduleHash.toString(16).padStart(8, '0')}`;
-  $('latencyLabel').textContent = game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
-  $('chartTitle').textContent = game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
+  $('latencyLabel').textContent = game.mode === 'metal' ? 'METAL REQUEST' : game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
+  $('chartTitle').textContent = game.mode === 'metal' ? 'METAL REQUEST TIME' : game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
+  $('timingNote').textContent = game.mode === 'metal'
+    ? 'Metal request time is measured by the local proxy, including inference. App prep includes frame capture; round trip also includes browser transfer.'
+    : game.mode === 'demo' ? 'Demo delay is a local simulation. App prep and round trip are still measured.'
+      : 'Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.';
+  $('connectionLabel').textContent = game.mode === 'metal'
+    ? metalConnected ? 'Qwen Metal is ready' : 'Qwen Metal is offline'
+    : connected ? 'Local Jev is ready' : 'Local Jev is offline';
+  $('connectionAddress').textContent = game.mode === 'metal'
+    ? `${metalEndpoint} /v1/chat/completions`
+    : `${jevEndpoint} /v1/systemone`;
+  $('connectionDot').classList.toggle('connected', game.mode === 'metal' ? metalConnected : connected);
   $('hitRateStat').textContent = game.hits + game.missed
     ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
     : '—';
@@ -255,18 +275,20 @@ function render() {
     paused: 'PAUSED', ended: 'ROUND COMPLETE',
   }[game.phase];
   $('stageMessage').textContent = {
-    idle: 'Hit start to release the moles', running: game.pending ? `${game.mode === 'jev' ? 'Local Jev' : 'Demo bot'} is choosing…` : 'Watch the next move',
+    idle: 'Hit start to release the moles', running: game.pending ? `${playerName()} is choosing…` : 'Watch the next move',
     paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
   }[game.phase];
-  $('agentBadge').textContent = game.mode === 'jev' ? `LOCAL JEV · ${imageMode ? 'IMAGE' : 'TEXT'}` : 'DEMO BOT';
+  $('agentBadge').textContent = game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'QWEN METAL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
+  $('modelName').textContent = game.mode === 'metal' ? metalModelName : game.mode === 'demo' ? 'demo-bot' : jevModelName;
   $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${imageMode ? 'image' : 'text'} round <span>↗</span>`;
   $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} points`;
   $('quickDetail').textContent = game.phase === 'idle'
-    ? `${imageMode ? 'Image' : 'Text'} input · seed ${settings.seed} · ${settings.durationSec} seconds`
+    ? `${playerName()} · ${imageMode ? 'image' : 'text'} · seed ${settings.seed}`
     : `${game.hits} hits · ${game.missed} escaped · ${game.stale} stale`;
   $('startButton').disabled = game.phase === 'running';
   $('pauseButton').disabled = game.phase !== 'running';
   $('jevMode').disabled = ['running', 'paused'].includes(game.phase);
+  $('metalMode').disabled = ['running', 'paused'].includes(game.phase) || !metalConfigured;
   $('demoMode').disabled = ['running', 'paused'].includes(game.phase);
   $('textInput').disabled = ['running', 'paused'].includes(game.phase);
   $('imageInput').disabled = ['running', 'paused'].includes(game.phase);
@@ -274,16 +296,21 @@ function render() {
   $('seedInput').disabled = ['running', 'paused'].includes(game.phase);
   $('imagePreset').disabled = ['running', 'paused'].includes(game.phase);
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
+  $('metalMode').classList.toggle('selected', game.mode === 'metal');
   $('demoMode').classList.toggle('selected', game.mode === 'demo');
+  $('samplesSelect').disabled = game.mode !== 'jev';
   $('textInput').classList.toggle('selected', !imageMode);
   $('imageInput').classList.toggle('selected', imageMode);
   $('inputNote').textContent = imageMode
     ? 'Sends the displayed board pixels; mole locations stay out of the text.'
     : 'Sends exact occupants and time remaining.';
   $('controlHint').textContent = game.mode === 'demo'
-    ? 'Demo bot makes local choices. Switch to Local Jev for model decisions.'
-    : connected ? `Local Jev (${actualModel}) is ready with ${imageMode ? 'image' : 'text'} input.`
-      : 'Local Jev is offline. Recheck the connection or use Demo bot.';
+    ? 'Demo bot makes local choices. Choose a model to test inference.'
+    : game.mode === 'metal'
+      ? metalConnected ? `Qwen Metal (${metalModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
+        : 'Qwen Metal is offline. Start vLLM-metal, then recheck the connection.'
+      : connected ? `Local Jev (${jevModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
+        : 'Local Jev is offline. Recheck the connection or use Demo bot.';
 }
 
 function abortDecision() {
@@ -327,11 +354,15 @@ async function startGame() {
     await loadConnection();
     if (!connected) return;
   }
+  if (game.mode === 'metal' && !metalConnected) {
+    await loadConnection();
+    if (!metalConnected) return;
+  }
   resetGame();
   game.phase = 'running';
   game.startedAt = Date.now();
   game.nextSpawnAt = Date.now() + 250;
-  event(`${game.mode === 'jev' ? `Local Jev · ${game.inputMode}` : 'Demo bot'} · seed ${game.seed}`, 'START');
+  event(`${playerName()} · ${game.inputMode} · seed ${game.seed}`, 'START');
   render();
   document.querySelector('.board-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -396,11 +427,11 @@ async function decide() {
   const controller = new AbortController();
   game.controller = controller;
   let body = null;
-  if (game.mode === 'jev') {
+  if (game.mode !== 'demo') {
     if (game.inputMode === 'image') drawVisionBoard();
     const request = game.inputMode === 'image'
-      ? { mode: 'image', image: visionBoard.toDataURL('image/png'), score: game.score, samples: settings.samples }
-      : { mode: 'text', holes: snapshot, score: game.score, samples: settings.samples };
+      ? { backend: game.mode, mode: 'image', image: visionBoard.toDataURL('image/png'), score: game.score, samples: settings.samples }
+      : { backend: game.mode, mode: 'text', holes: snapshot, score: game.score, samples: settings.samples };
     body = JSON.stringify(request);
   }
   const prepMs = performance.now() - preparationStarted;
@@ -430,8 +461,9 @@ async function decide() {
     expireMoles(Date.now());
     result.prepMs = prepMs;
     if (game.mode === 'jev') {
-      actualModel = result.model;
-      $('modelName').textContent = actualModel;
+      jevModelName = result.model;
+    } else if (game.mode === 'metal') {
+      metalModelName = result.model;
     }
     if (Number.isFinite(result.modelMs)) {
       game.latencies.push(result.modelMs);
@@ -444,8 +476,9 @@ async function decide() {
     game.timing.count++;
     renderChart();
     const timing = Number.isFinite(result.modelMs)
-      ? `${Math.round(result.modelMs)} ms model`
+      ? `${Math.round(result.modelMs)} ms ${game.mode === 'metal' ? 'request' : 'model'}`
       : `${Math.round(result.roundTripMs)} ms trip`;
+    if (result.invalidOutput) event('Unrecognized model answer; waiting', timing, 'error');
     const index = /^h[1-9]$/.test(result.choice) ? Number(result.choice.slice(1)) - 1 : -1;
     if (index < 0) {
       event('Chose to wait', timing);
@@ -528,14 +561,19 @@ async function loadConnection() {
     const response = await fetch('/api/status');
     const status = await response.json();
     connected = status.connected;
-    actualModel = status.model;
-    $('modelName').textContent = actualModel;
-    $('connectionAddress').textContent = `${status.endpoint} /v1/systemone`;
-    $('connectionLabel').textContent = connected ? 'Local Jev is ready' : 'Local Jev is offline';
-    $('connectionDot').classList.toggle('connected', connected);
+    jevModelName = status.model;
+    metalConfigured = Boolean(status.metalConfigured);
+    metalConnected = Boolean(status.metalConnected);
+    metalModelName = status.metalModel || metalModelName;
+    jevEndpoint = status.endpoint || jevEndpoint;
+    metalEndpoint = status.metalEndpoint || metalEndpoint;
+    $('metalNote').textContent = metalConfigured
+      ? `Qwen3.5-0.8B on vLLM-metal: ${metalConnected ? 'ready' : 'offline'}. Experimental text and image path.`
+      : 'Qwen3.5-0.8B is optional. Set METAL_BASE_URL to enable it.';
   } catch {
     $('connectionLabel').textContent = 'Local server unavailable';
     connected = false;
+    metalConnected = false;
   }
   render();
 }
@@ -569,7 +607,6 @@ $('seedInput').addEventListener('change', (event_) => {
 });
 $('imagePreset').addEventListener('click', () => {
   Object.assign(settings, { spawnMs: 600, lifeMs: 1100, maxActive: 3, durationSec: 30, samples: 1, seed: 42 });
-  game.mode = 'jev';
   game.inputMode = 'image';
   $('spawnSlider').value = settings.spawnMs;
   $('lifeSlider').value = settings.lifeMs;
@@ -582,6 +619,7 @@ $('imagePreset').addEventListener('click', () => {
   resetGame();
 });
 $('jevMode').addEventListener('click', () => { game.mode = 'jev'; render(); });
+$('metalMode').addEventListener('click', () => { game.mode = 'metal'; render(); });
 $('demoMode').addEventListener('click', () => { game.mode = 'demo'; render(); });
 $('textInput').addEventListener('click', () => { game.inputMode = 'text'; render(); });
 $('imageInput').addEventListener('click', () => { game.inputMode = 'image'; render(); });

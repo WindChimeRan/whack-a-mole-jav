@@ -2,6 +2,23 @@
 
 These are single-round observations from September 23, 2026 on a local DiffusionGemma Jev-style server. They are useful for reproducing behavior and locating latency boundaries, not statistical accuracy estimates.
 
+## Optional Qwen3.5-0.8B on vLLM-metal
+
+On September 24, 2026, both paths ran against Qwen3.5-0.8B on vLLM-metal 0.29.0 on a Mac. Both rounds used the default 600 ms spawn interval, 1,100 ms stay, seed `42`, at most three visible moles, and a 30-second clock. Each produced the same 50/50 spawn plan (`436c1b95`), with 50 possible points. The game sent complete board pixels for image mode and occupied holes with remaining lifetimes for text mode.
+
+| Metric | Qwen text | Qwen image |
+| --- | ---: | ---: |
+| Score | **34** | **30** |
+| Hits | 42 | 36 |
+| Escaped | 0 | 6 |
+| Stale choices | 50 | 50 |
+| Local proxy request, average | 46 ms | 94 ms |
+| App preparation, average | <0.1 ms | 2.4 ms |
+| Browser round trip, average | 48 ms | 96 ms |
+| Decisions sent | 100 | 93 |
+
+The Qwen route uses `POST /v1/chat/completions`, so its request timing is measured at the local game proxy and includes inference; it is not the Jev endpoint's server-side timing. These are one-round observations, not an accuracy estimate. Qwen sometimes selected bombs or empty holes, and the small model was sensitive to prompt wording. The shorter prompts used in these rounds were checked on known mole and bomb frames before replaying the game.
+
 ## Matched text versus image stress run
 
 Both arms used seed `42`, one noise draw, 250 ms between spawns, 350 ms mole lifetime, at most three visible, and a 30-second round. Each received **119/119** planned spawns with checksum `2da46b37`. The plan contained 88 regular moles, 17 gold moles, and 14 bombs; the maximum possible score was 139.
