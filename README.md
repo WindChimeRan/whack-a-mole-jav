@@ -1,6 +1,6 @@
 # Mole Lab: Whack-a-Mole for local models
 
-**Can a local model keep up?** Whack-a-Mole rewards fast, accurate choices. Larger models may choose better but answer too late; smaller models may answer sooner and miss. Live image input puts multimodal latency on the clock, with Text as a baseline. Play the same seeded round yourself.
+**Can a local model keep up with Whack-a-Mole?** The game rewards fast, accurate choices. Larger models may choose better but answer too late; smaller models may answer sooner and miss. Live image input puts multimodal latency on the clock, with Text as a baseline. Play the same seeded round yourself.
 
 <p align="center"><img src="docs/qwen-metal-demo.gif" alt="Desktop replay of Qwen playing a live image-input round" width="960"></p>
 

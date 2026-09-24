@@ -42,9 +42,11 @@ test('browser Jev response keeps the selected action and server timing', () => {
 test('Qwen Metal requests keep image observations visual and parse bounded labels', () => {
   const textRequest = makeMetalRequest({ mode: 'text', holes: board, score: 4, samples: 1 }, 'qwen35-metal');
   assert.match(textRequest.messages[0].content, /Hole 2: gold mole \(430 ms left\)/);
+  assert.match(textRequest.messages[0].content, /Do not hit a bomb or empty hole/);
   assert.deepEqual(textRequest.structured_outputs.choice, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8', 'h9', 'wait']);
   const imageRequest = makeMetalRequest({ mode: 'image', image, score: 4, samples: 1 }, 'qwen35-metal');
   assert.equal(imageRequest.messages[0].content[0].text, metalImagePrompt);
+  assert.match(metalImagePrompt, /Do not hit a gray bomb with an orange fuse or an empty hole/);
   assert.equal(imageRequest.messages[0].content[1].image_url.url, image);
   assert.equal(JSON.stringify(imageRequest).includes('gold mole (430'), false);
   assert.equal(parseMetalChoice('h3'), 'h3');
