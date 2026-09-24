@@ -22,3 +22,14 @@ export function parseModelBaseUrl(raw) {
     endpoint: `${url.host}${path}/v1/chat/completions`,
   };
 }
+
+export function parseJevBaseUrl(raw) {
+  const normalized = raw.trim().replace(/\/v1\/systemone\/?$/, '');
+  const connection = parseModelBaseUrl(normalized);
+  return {
+    baseUrl: connection.baseUrl,
+    healthUrl: `${connection.baseUrl}/health`,
+    decisionUrl: `${connection.baseUrl}/v1/systemone`,
+    endpoint: `${new URL(connection.baseUrl).host}${new URL(connection.baseUrl).pathname.replace(/\/$/, '')}/v1/systemone`,
+  };
+}

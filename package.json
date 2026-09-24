@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-static.mjs",
+    "bridge": "node --env-file-if-exists=.env scripts/jev-bridge.mjs",
     "start": "node --env-file-if-exists=.env server.js",
     "test": "node --test"
   }

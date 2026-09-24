@@ -12,7 +12,7 @@
   <div class="shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">✳</span><span>MOLE<span class="brand-light">LAB</span></span></div>
-      <div class="topbar-right"><span class="live-dot"></span><span>LOCAL MODEL ARCADE</span><span class="topbar-separator"></span><span id="modelName">Qwen3.5-0.8B</span></div>
+      <div class="topbar-right"><span class="live-dot"></span><span>LOCAL MODEL ARCADE</span><span class="topbar-separator"></span><span id="modelName">Qwen3.5-0.8B</span><a class="topbar-link" href="#setup">Setup</a><a class="github-link" href="https://github.com/WindChimeRan/whack-a-mole-jav" target="_blank" rel="noopener noreferrer" aria-label="Mole Lab source on GitHub" title="Source on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .9A11.1 11.1 0 0 0 8.49 22.5c.55.1.75-.24.75-.53v-2.07c-3.06.66-3.7-1.3-3.7-1.3-.5-1.27-1.22-1.61-1.22-1.61-1-.69.08-.68.08-.68 1.11.08 1.69 1.14 1.69 1.14.98 1.68 2.57 1.2 3.2.92.1-.71.38-1.2.69-1.48-2.45-.28-5.03-1.22-5.03-5.47 0-1.2.43-2.19 1.14-2.96-.12-.28-.5-1.4.1-2.92 0 0 .93-.3 3.05 1.13A10.6 10.6 0 0 1 12 6.4c.94 0 1.88.13 2.76.37 2.12-1.44 3.05-1.13 3.05-1.13.6 1.52.22 2.64.1 2.92.71.77 1.14 1.76 1.14 2.96 0 4.26-2.58 5.18-5.04 5.46.39.34.73 1 .73 2.02v2.97c0 .29.2.64.76.53A11.1 11.1 0 0 0 12 .9Z"/></svg></a></div>
     </header>
 
     <section class="intro">
@@ -25,13 +25,19 @@
         <div class="connection-heading"><span id="connectionDot" class="connection-dot"></span><span id="connectionLabel">Checking model server…</span><button id="checkConnection" class="change-key" type="button">Recheck</button></div>
         <p class="microcopy">Decision API: <span id="connectionAddress">localhost:8012 /v1/chat/completions</span></p>
         <details id="modelSettings" class="model-settings">
-          <summary>Change model or server</summary>
-          <div class="model-settings-fields">
+          <summary id="modelSettingsSummary">Change model or server</summary>
+          <div id="metalSettingsFields" class="model-settings-fields">
             <label for="modelBaseUrl">MODEL BASE URL</label><input id="modelBaseUrl" type="text" value="http://127.0.0.1:8012" spellcheck="false" autocapitalize="off">
             <label for="modelId">MODEL ID</label><input id="modelId" type="text" value="Qwen/Qwen3.5-0.8B" list="modelSuggestions" spellcheck="false" autocapitalize="off"><datalist id="modelSuggestions"></datalist>
             <label for="modelApiKey">BEARER KEY <span>(OPTIONAL, THIS TAB ONLY)</span></label><input id="modelApiKey" type="password" autocomplete="off">
             <div class="model-settings-actions"><button id="applyModelSettings" type="button">Apply and connect</button><button id="resetModelSettings" type="button">Reset defaults</button></div>
             <small id="modelSettingsHint">Connect reads model IDs from the server. URL and ID are saved here; the key stays in this tab.</small>
+          </div>
+          <div id="jevSettingsFields" class="model-settings-fields" hidden>
+            <label for="jevBaseUrl">JEV BRIDGE OR SERVER URL</label><input id="jevBaseUrl" type="text" value="http://127.0.0.1:8013" spellcheck="false" autocapitalize="off">
+            <label for="jevApiKey">BEARER KEY <span>(OPTIONAL, THIS TAB ONLY)</span></label><input id="jevApiKey" type="password" autocomplete="off">
+            <div class="model-settings-actions"><button id="applyJevSettings" type="button">Apply and connect</button><button id="resetJevSettings" type="button">Reset defaults</button></div>
+            <small id="jevSettingsHint">Run the Jev bridge on this computer, or enter a Jev server that allows browser requests.</small>
           </div>
         </details>
       </div>
@@ -89,6 +95,40 @@
         <div class="select-control"><label for="crowdSelect">MAX MOLES VISIBLE</label><select id="crowdSelect"><option value="1">1 at a time</option><option value="2">2 at a time</option><option value="3" selected>3 at a time</option><option value="5">5 at a time</option></select><label for="samplesSelect">NOISE DRAWS / DECISION</label><select id="samplesSelect"><option value="1" selected>1 — fastest</option><option value="auto">Auto — adaptive</option><option value="4">4 — steadier</option></select><label for="lengthSelect">ROUND LENGTH</label><select id="lengthSelect"><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select><label for="seedInput">ROUND SEED</label><input id="seedInput" type="number" min="0" max="2147483647" step="1" value="42"></div>
       </div>
       <div class="control-footer"><p id="controlHint">Checking your Qwen Metal server…</p></div>
+    </section>
+    <section id="setup" class="setup-section" aria-labelledby="setupTitle">
+      <div class="setup-heading"><div><p class="eyebrow">RUN YOUR OWN MODEL</p><h2 id="setupTitle">Start a server, then press Connect.</h2></div><p>The browser sends board images or text directly to your model server. Chrome may ask for local network access.</p></div>
+      <div class="setup-grid">
+        <article class="setup-card">
+          <span class="setup-tag">DEFAULT · APPLE SILICON</span>
+          <h3>Qwen3.5-0.8B with vLLM-metal</h3>
+          <p><a href="https://github.com/vllm-project/vllm-metal#installation" target="_blank" rel="noopener noreferrer">Install vLLM-metal</a>, then run this on the Mac where you open Mole Lab:</p>
+          <pre><code>VLLM_METAL_MULTIMODAL_MODE=multimodal-native \
+VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+vllm serve Qwen/Qwen3.5-0.8B \
+  --max-model-len 2048 \
+  --max-num-seqs 1 --gpu-memory-utilization 0.35 \
+  --host 127.0.0.1 --port 8012</code></pre>
+          <p>Choose <strong>Local model</strong> and click <strong>Connect</strong>. The default URL is <code>http://127.0.0.1:8012</code>; the model ID is discovered automatically.</p>
+        </article>
+        <article class="setup-card">
+          <span class="setup-tag">OPTIONAL · DGX SPARK</span>
+          <h3>DiffusionGemma with Jev</h3>
+          <p>On a DGX Spark, follow the <a href="https://github.com/mmastrac/djev-spark" target="_blank" rel="noopener noreferrer">djev-spark recipe</a> to run vLLM and its Jev decision server:</p>
+          <pre><code>git clone https://github.com/mmastrac/djev-spark.git
+cd djev-spark
+cp .env.example .env
+scripts/download-model.sh
+docker compose up -d --build
+scripts/smoke.sh</code></pre>
+          <p>The recipe's Jev server listens on port 8011. On the computer running Chrome, use Node.js 24+ to start the bridge below. Replace <code>192.168.1.42</code> with your Spark's LAN address. Then choose <strong>Local Jev</strong> and click <strong>Connect</strong>; its default URL is <code>http://127.0.0.1:8013</code>.</p>
+          <pre><code>git clone https://github.com/WindChimeRan/whack-a-mole-jav.git
+cd whack-a-mole-jav
+JEV_BASE_URL=http://192.168.1.42:8011 npm run bridge</code></pre>
+          <p>A Jev server with CORS support can also be entered directly. For another hosted site, set <code>BRIDGE_ALLOWED_ORIGIN</code> to its HTTPS origin. Image mode uses the Jev server's <code>images</code> extension.</p>
+        </article>
+      </div>
+      <p class="setup-source">Source code, local run instructions, and benchmark notes: <a href="https://github.com/WindChimeRan/whack-a-mole-jav" target="_blank" rel="noopener noreferrer">GitHub repository ↗</a></p>
     </section>
     <footer><span>MOLE LAB / LIVE DECISION GAME</span><span>Local model · Human · Local Jev · Demo</span></footer>
   </div>

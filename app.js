@@ -1,11 +1,14 @@
 import { createMetalRequest, parseMetalChoice } from './metal-client.js';
-import { defaultModelId, parseModelBaseUrl } from './model-connection.js';
+import { defaultModelId, parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
+import { defaultJevModel, makeJevRequest, parseJevDecision } from './jev-client.js';
 
 const $ = (id) => document.getElementById(id);
 const hostedBrowserModel = location.protocol === 'https:' || new URLSearchParams(location.search).get('direct') === '1';
 const defaultModelBaseUrl = 'http://127.0.0.1:8012';
+const defaultJevBaseUrl = hostedBrowserModel ? 'http://127.0.0.1:8013' : 'http://127.0.0.1:8011';
 const legacyModelAlias = 'qwen35-metal';
 const modelSettingsKey = 'moleLabModelConnection';
+const jevSettingsKey = 'moleLabJevConnection';
 const savedModelSettings = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(modelSettingsKey) || 'null');
@@ -15,11 +18,23 @@ const savedModelSettings = (() => {
   } catch { /* Ignore invalid or unavailable browser storage. */ }
   return null;
 })();
+const savedJevSettings = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(jevSettingsKey) || 'null');
+    if (typeof saved?.baseUrl === 'string') return parseJevBaseUrl(saved.baseUrl);
+  } catch { /* Ignore invalid or unavailable browser storage. */ }
+  return null;
+})();
 let metalConnection = savedModelSettings?.connection || parseModelBaseUrl(defaultModelBaseUrl);
 let useDirectModel = hostedBrowserModel || Boolean(savedModelSettings);
+let jevConnection = savedJevSettings || parseJevBaseUrl(defaultJevBaseUrl);
+let useDirectJev = hostedBrowserModel || Boolean(savedJevSettings);
 let metalApiKey = '';
+let jevApiKey = '';
 let modelConnectionIssue = '';
 let modelSettingsIssue = '';
+let jevConnectionIssue = '';
+let jevSettingsIssue = '';
 const holeElements = [...document.querySelectorAll('.hole')];
 const visionBoard = $('visionBoard');
 const visionContext = visionBoard.getContext('2d', { alpha: false });
@@ -59,13 +74,14 @@ let metalConfigured = true;
 let metalConnected = false;
 let connectionChecked = false;
 let connectionCheckId = 0;
-let jevModelName = 'jev-latest';
+let jevModelName = defaultJevModel;
 let metalModelName = savedModelSettings?.modelId || defaultModelId;
-let jevEndpoint = 'localhost:8011';
+let jevEndpoint = useDirectJev ? jevConnection.endpoint : 'localhost:8011/v1/systemone';
 let metalEndpoint = metalConnection.endpoint;
 
 $('modelBaseUrl').value = metalConnection.baseUrl;
 $('modelId').value = metalModelName;
+$('jevBaseUrl').value = jevConnection.baseUrl;
 
 function playerName() {
   return { metal: 'Local model', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];
@@ -286,22 +302,25 @@ function render() {
       ? 'Model request time is measured in this browser through the response. App prep includes frame capture.'
       : 'Model request time is measured by the local proxy, including inference. App prep includes frame capture; round trip also includes browser transfer.'
     : game.mode === 'demo' ? 'Demo delay is a local simulation. App prep and round trip are still measured.'
-      : 'Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.';
+      : useDirectJev
+        ? 'Decision time is server reported. App prep includes frame capture; round trip includes browser transfer to Jev.'
+        : 'Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.';
   $('choiceDiagnosis').hidden = game.mode === 'human' || game.phase === 'idle';
   $('choiceDiagnosis').textContent = `${game.emptyAtInput} already empty in the input · ${game.expiredInFlight} expired before the hit`;
   $('connectionLabel').textContent = game.mode === 'human' ? 'Human player is ready'
     : game.mode === 'demo' ? 'Demo bot is ready'
-    : !connectionChecked ? useDirectModel ? 'Connect to your model server' : 'Checking model servers…'
+    : !connectionChecked ? game.mode === 'jev' ? 'Connect to your Jev server' : useDirectModel ? 'Connect to your model server' : 'Checking model servers…'
     : game.mode === 'metal'
     ? metalConnected ? `${modelDisplayName(metalModelName)} is ready` : modelConnectionIssue ? 'Model connection needs attention' : 'Model server is offline'
-    : connected ? 'Local Jev is ready' : 'Local Jev is offline';
+    : connected ? 'Local Jev is ready' : jevConnectionIssue ? 'Jev connection needs attention' : 'Local Jev is offline';
   $('connectionAddress').textContent = game.mode === 'human' ? 'Click a hole or press 1–9'
     : game.mode === 'demo' ? 'Runs in this browser'
     : game.mode === 'metal'
     ? metalEndpoint
-    : `${jevEndpoint} /v1/systemone`;
+    : jevEndpoint;
   $('connectionDot').classList.toggle('connected', game.mode === 'human' || game.mode === 'demo' || (game.mode === 'metal' ? metalConnected : connected));
-  $('checkConnection').textContent = useDirectModel && !metalConnected ? 'Connect' : 'Recheck';
+  $('checkConnection').textContent = game.mode === 'jev' && useDirectJev && !connected
+    || game.mode === 'metal' && useDirectModel && !metalConnected ? 'Connect' : 'Recheck';
   $('hitRateStat').textContent = game.hits + game.missed
     ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
     : '—';
@@ -340,7 +359,7 @@ function render() {
     : `${game.hits} ${game.hits === 1 ? 'hit' : 'hits'} · ${game.missed} escaped · ${game.stale} ${game.mode === 'human' ? 'empty swings' : 'stale'}`;
   $('startButton').disabled = game.phase === 'running';
   $('pauseButton').disabled = game.phase !== 'running';
-  $('jevMode').disabled = ['running', 'paused'].includes(game.phase) || hostedBrowserModel;
+  $('jevMode').disabled = ['running', 'paused'].includes(game.phase);
   $('metalMode').disabled = ['running', 'paused'].includes(game.phase) || !metalConfigured;
   $('humanMode').disabled = ['running', 'paused'].includes(game.phase);
   $('demoMode').disabled = ['running', 'paused'].includes(game.phase);
@@ -352,6 +371,13 @@ function render() {
   for (const id of ['modelBaseUrl', 'modelId', 'modelApiKey', 'applyModelSettings', 'resetModelSettings']) {
     $(id).disabled = ['running', 'paused'].includes(game.phase);
   }
+  for (const id of ['jevBaseUrl', 'jevApiKey', 'applyJevSettings', 'resetJevSettings']) {
+    $(id).disabled = ['running', 'paused'].includes(game.phase);
+  }
+  const jevSettingsVisible = game.mode === 'jev';
+  $('metalSettingsFields').hidden = jevSettingsVisible;
+  $('jevSettingsFields').hidden = !jevSettingsVisible;
+  $('modelSettingsSummary').textContent = jevSettingsVisible ? 'Connect DGX Spark' : 'Change model or server';
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
   $('metalMode').classList.toggle('selected', game.mode === 'metal');
   $('humanMode').classList.toggle('selected', game.mode === 'human');
@@ -365,20 +391,21 @@ function render() {
       : 'Sends exact occupants and time remaining.';
   $('playerNote').textContent = game.mode === 'human' ? 'No model server needed. Use the same seed and pressure settings.'
     : game.mode === 'demo' ? 'Scripted local bot, for previewing the arena.'
-    : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect.' : 'Checking model servers…'
-    : game.mode === 'jev' ? `DGX Spark Jev-style server: ${connected ? 'ready' : 'offline'}. Optional player.`
+    : !connectionChecked ? game.mode === 'jev' ? 'Set your DGX Spark server above, then click Connect.' : useDirectModel ? 'Set a vLLM-compatible server above, then click Connect.' : 'Checking model servers…'
+    : game.mode === 'jev' ? jevConnectionIssue || `DGX Spark Jev server: ${connected ? 'ready' : 'offline'}.`
       : modelConnectionIssue || `${modelDisplayName(metalModelName)}: ${metalConnected ? 'ready' : 'offline'}.`;
   $('modelSettingsHint').textContent = modelSettingsIssue || 'Connect reads model IDs from the server. URL and ID are saved here; the key stays in this tab.';
+  $('jevSettingsHint').textContent = jevSettingsIssue || 'The URL is saved in this browser; the key stays in this tab.';
   $('controlHint').textContent = game.mode === 'human'
     ? 'Click a hole or press 1–9. Use the same seed and pressure settings to compare your score.'
     : game.mode === 'demo'
     ? 'Demo bot makes local choices. Choose a model to test inference.'
-    : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect or Start.' : 'Checking model servers…'
+    : !connectionChecked ? game.mode === 'jev' ? 'Set the Jev server URL above, then click Connect or Start.' : useDirectModel ? 'Set a vLLM-compatible server above, then click Connect or Start.' : 'Checking model servers…'
     : game.mode === 'metal'
       ? metalConnected ? `${modelDisplayName(metalModelName)} is ready with ${imageMode ? 'image' : 'text'} input.`
         : modelConnectionIssue || `Model server is offline. Check ${metalConnection.baseUrl} and click Connect.`
       : connected ? `Local Jev (${jevModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
-        : 'Local Jev is offline. Recheck the connection or use Demo bot.';
+        : jevConnectionIssue || 'Local Jev is offline. Check its URL and click Connect.';
 }
 
 function abortDecision() {
@@ -552,9 +579,11 @@ async function decide() {
     const request = game.inputMode === 'image'
       ? { backend: game.mode, mode: 'image', image: visionBoard.toDataURL('image/png'), score: game.score, samples: settings.samples }
       : { backend: game.mode, mode: 'text', holes: snapshot, score: game.score, samples: settings.samples };
-    body = JSON.stringify(useDirectModel && game.mode === 'metal'
+    body = JSON.stringify(game.mode === 'metal' && useDirectModel
       ? createMetalRequest(request, metalModelName)
-      : request);
+      : game.mode === 'jev' && useDirectJev
+        ? makeJevRequest(request)
+        : request);
   }
   const prepMs = performance.now() - preparationStarted;
   const sentAt = performance.now();
@@ -578,6 +607,17 @@ async function decide() {
           model: completion.model || metalModelName,
           modelMs: Math.round(performance.now() - sentAt), timingSource: 'browser_to_local',
         };
+      });
+    } else if (useDirectJev && game.mode === 'jev') {
+      resultPromise = fetch(jevConnection.decisionUrl, {
+        method: 'POST', headers: {
+          'Content-Type': 'application/json',
+          ...(jevApiKey ? { Authorization: `Bearer ${jevApiKey}` } : {}),
+        },
+        body, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8_000)]),
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(`Jev returned HTTP ${response.status}${game.inputMode === 'image' ? '; check image support' : ''}`);
+        return { ...parseJevDecision(await response.json(), jevModelName), timingSource: 'server_reported' };
       });
     } else {
       resultPromise = fetch('/api/decide', {
@@ -680,17 +720,21 @@ async function loadConnection() {
   const checkId = ++connectionCheckId;
   const activeConnection = metalConnection;
   const activeKey = metalApiKey;
+  const activeJevConnection = jevConnection;
   connectionChecked = false;
   modelConnectionIssue = '';
+  jevConnectionIssue = '';
   render();
   if (!hostedBrowserModel) {
     try {
       const response = await fetch('/api/status');
       const status = await response.json();
       if (checkId !== connectionCheckId) return;
-      connected = Boolean(status.connected);
-      jevModelName = status.model || jevModelName;
-      jevEndpoint = status.endpoint || jevEndpoint;
+      if (!useDirectJev) {
+        connected = Boolean(status.connected);
+        jevModelName = status.model || jevModelName;
+        jevEndpoint = status.endpoint ? `${status.endpoint}/v1/systemone` : jevEndpoint;
+      }
       if (!useDirectModel) {
         metalConfigured = Boolean(status.metalConfigured);
         metalConnected = Boolean(status.metalConnected);
@@ -700,11 +744,11 @@ async function loadConnection() {
       }
     } catch {
       if (checkId !== connectionCheckId) return;
-      connected = false;
+      if (!useDirectJev) connected = false;
       if (!useDirectModel) metalConnected = false;
     }
   }
-  if (useDirectModel) {
+  if (useDirectModel && game.mode === 'metal') {
     metalConfigured = true;
     metalEndpoint = activeConnection.endpoint;
     try {
@@ -739,6 +783,23 @@ async function loadConnection() {
       modelConnectionIssue = error instanceof TypeError
         ? `Cannot reach ${activeConnection.baseUrl}. Check CORS and Chrome local-network access.`
         : error.message || `Cannot reach ${activeConnection.baseUrl}.`;
+    }
+  }
+  if (useDirectJev && game.mode === 'jev') {
+    jevEndpoint = activeJevConnection.endpoint;
+    try {
+      const response = await fetch(activeJevConnection.healthUrl, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error(`Jev server returned HTTP ${response.status}.`);
+      if (checkId !== connectionCheckId) return;
+      connected = true;
+    } catch (error) {
+      if (checkId !== connectionCheckId) return;
+      connected = false;
+      jevConnectionIssue = error instanceof TypeError
+        ? `Cannot reach ${activeJevConnection.baseUrl}. Start the Jev bridge or enable CORS, then allow Chrome local-network access.`
+        : error.message || `Cannot reach ${activeJevConnection.baseUrl}.`;
     }
   }
   if (checkId !== connectionCheckId) return;
@@ -789,6 +850,40 @@ $('resetModelSettings').addEventListener('click', () => {
   void loadConnection();
 });
 
+$('applyJevSettings').addEventListener('click', () => {
+  if (['running', 'paused'].includes(game.phase)) return;
+  try {
+    jevConnection = parseJevBaseUrl($('jevBaseUrl').value);
+    jevEndpoint = jevConnection.endpoint;
+    jevApiKey = $('jevApiKey').value.trim();
+    useDirectJev = true;
+    connected = false;
+    jevSettingsIssue = '';
+    try { localStorage.setItem(jevSettingsKey, JSON.stringify({ baseUrl: jevConnection.baseUrl })); } catch { /* Storage is optional. */ }
+    resetGame();
+    void loadConnection();
+  } catch (error) {
+    jevSettingsIssue = error.message;
+    $('modelSettings').open = true;
+    render();
+  }
+});
+
+$('resetJevSettings').addEventListener('click', () => {
+  if (['running', 'paused'].includes(game.phase)) return;
+  try { localStorage.removeItem(jevSettingsKey); } catch { /* Storage is optional. */ }
+  jevConnection = parseJevBaseUrl(defaultJevBaseUrl);
+  jevEndpoint = jevConnection.endpoint;
+  jevApiKey = '';
+  useDirectJev = hostedBrowserModel;
+  connected = false;
+  jevSettingsIssue = '';
+  $('jevBaseUrl').value = jevConnection.baseUrl;
+  $('jevApiKey').value = '';
+  resetGame();
+  void loadConnection();
+});
+
 $('spawnSlider').addEventListener('input', (event_) => {
   settings.spawnMs = Number(event_.target.value);
   $('spawnValue').textContent = formatSeconds(settings.spawnMs);
@@ -832,6 +927,8 @@ function selectPlayer(mode) {
   game.mode = mode;
   if (mode === 'human') game.inputMode = 'image';
   resetGame();
+  if (mode === 'jev' && !connected) $('modelSettings').open = true;
+  if (mode === 'jev' || mode === 'metal') void loadConnection();
 }
 
 $('jevMode').addEventListener('click', () => selectPlayer('jev'));

@@ -6,7 +6,7 @@
 
 ## Play on Vercel
 
-Open **[mole-lab.vercel.app](https://mole-lab.vercel.app)** in Chrome. **Human** and **Demo** work immediately. To let a model play, run a vLLM-compatible server on the same Mac as your browser, then click **Connect** on the site. Chrome will ask for local network access; the board image or text state goes directly from your browser to your model server. Vercel does not proxy inference.
+Open **[mole-lab.vercel.app](https://mole-lab.vercel.app)** in Chrome. The page has setup steps for both model backends and a link to this repository. **Human** and **Demo** work immediately. For model play, start a local or LAN server and click **Connect**. Chrome may ask for local network access. The board image or text state goes from your browser to your model server or local Jev bridge; Vercel does not proxy inference.
 
 For the default Qwen image and text player, install [vLLM-metal](https://github.com/vllm-project/vllm-metal#installation) on an Apple Silicon Mac and run:
 
@@ -23,6 +23,14 @@ Paged attention is enabled by default in vLLM-metal. The site expects `http://12
 
 To use another served model, expand **Change model or server** on the first screen and enter its base URL. **Connect** reads `/v1/models` and fills in the ID when the server has one model; choose from the list if it serves several. The URL and model ID are saved in your browser; an optional bearer key is kept only in the current tab. Choose **Text** for text-only models. Image play requires a vision model, and decision requests require a vLLM-compatible `structured_outputs.choice` endpoint. Custom model connections use browser-direct timing.
 
+For **Local Jev**, run a DGX Spark Jev server such as the [djev-spark recipe](https://github.com/mmastrac/djev-spark). That recipe serves Jev on port 8011 but does not provide browser CORS headers. Run the bridge on the computer where you open Chrome, replacing the example address with your Spark's LAN IP:
+
+```sh
+JEV_BASE_URL=http://192.168.1.42:8011 npm run bridge
+```
+
+Then select **Local Jev** and click **Connect**. Its default URL is `http://127.0.0.1:8013`. The bridge binds only to loopback, accepts the production site's origin, and forwards `/health` and `/v1/systemone` to the Spark. Set `BRIDGE_ALLOWED_ORIGIN` to the HTTPS origin if you host your own copy. If your Jev server already supports browser CORS, you can enter its URL in **Connect DGX Spark** and skip the bridge. Jev image input uses the recipe's `images` extension. The Jev endpoint reports decision time, and the game separately measures the browser round trip. An optional bearer key can be set with `JEV_API_KEY` on the bridge, or in the page for a direct connection; page keys stay in the current tab.
+
 ## Run from source
 
 The local game needs Node.js 24 or newer:
@@ -33,7 +41,7 @@ npm start
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173). With the default settings, its Node proxy connects to Qwen at `http://127.0.0.1:8012`; changing the model or URL in the page switches that model to browser-direct requests. For proxy configuration, copy `.env.example` to `.env` and set `METAL_BASE_URL`, `METAL_MODEL`, or `METAL_API_KEY`.
 
-**Local Jev** is an optional DGX Spark player in the local app. Set `JEV_BASE_URL` in `.env` to a server accepting `POST /v1/systemone`; image mode uses its `images` extension. `JEV_API_KEY` adds a bearer token when required. The hosted Vercel page keeps Human, Demo, and browser-direct model play.
+For the local Node proxy path, set `JEV_BASE_URL` in `.env` to a server accepting `POST /v1/systemone`. `JEV_API_KEY` adds a bearer token when required. Changing the Jev URL in the page switches that player to browser-direct requests.
 
 ## Play and compare
 

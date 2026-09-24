@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppServer, makeJevRequest, makeMetalRequest, parseMetalChoice } from './server.js';
+import { parseJevDecision } from './jev-client.js';
 
 const board = [null, { kind: 'gold', msLeft: 430 }, null, null, { kind: 'bomb', msLeft: 900 }, null, null, null, null];
 const image = 'data:image/png;base64,AAAA';
@@ -21,6 +22,20 @@ test('image request carries board pixels without the text occupancy list', () =>
   assert.equal(request.samples, 'auto');
   assert.equal('holes' in request.state, false);
   assert.equal(request.questions.action.type, 'choice');
+});
+
+test('browser Jev response keeps the selected action and server timing', () => {
+  const result = parseJevDecision({
+    model: 'dgemma',
+    answers: { action: { type: 'choice', choice: 'h2', confidence: .94 } },
+    usage: { input_tokens: 120 },
+    diagnostics: { timing: { total_ms: 123.4 } },
+  });
+  assert.deepEqual(result, {
+    choice: 'h2', confidence: .94, probabilities: undefined, model: 'dgemma',
+    inputTokens: 120, modelMs: 123,
+  });
+  assert.throws(() => parseJevDecision({ answers: { action: { type: 'choice', choice: 'h1 h2' } } }));
 });
 
 test('Qwen Metal requests keep image observations visual and parse bounded labels', () => {
