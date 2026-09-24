@@ -1,9 +1,10 @@
 import { createMetalRequest, parseMetalChoice } from './metal-client.js';
-import { parseModelBaseUrl } from './model-connection.js';
+import { defaultModelId, parseModelBaseUrl } from './model-connection.js';
 
 const $ = (id) => document.getElementById(id);
 const hostedBrowserModel = location.protocol === 'https:' || new URLSearchParams(location.search).get('direct') === '1';
 const defaultModelBaseUrl = 'http://127.0.0.1:8012';
+const legacyModelAlias = 'qwen35-metal';
 const modelSettingsKey = 'moleLabModelConnection';
 const savedModelSettings = (() => {
   try {
@@ -59,7 +60,7 @@ let metalConnected = false;
 let connectionChecked = false;
 let connectionCheckId = 0;
 let jevModelName = 'jev-latest';
-let metalModelName = savedModelSettings?.modelId || 'qwen35-metal';
+let metalModelName = savedModelSettings?.modelId || defaultModelId;
 let jevEndpoint = 'localhost:8011';
 let metalEndpoint = metalConnection.endpoint;
 
@@ -68,6 +69,10 @@ $('modelId').value = metalModelName;
 
 function playerName() {
   return { metal: 'Local model', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];
+}
+
+function modelDisplayName(id) {
+  return [defaultModelId, legacyModelAlias].includes(id) ? 'Qwen3.5-0.8B' : id;
 }
 
 function formatSeconds(ms) {
@@ -288,7 +293,7 @@ function render() {
     : game.mode === 'demo' ? 'Demo bot is ready'
     : !connectionChecked ? useDirectModel ? 'Connect to your model server' : 'Checking model servers…'
     : game.mode === 'metal'
-    ? metalConnected ? `${metalModelName} is ready` : modelConnectionIssue ? 'Model connection needs attention' : 'Model server is offline'
+    ? metalConnected ? `${modelDisplayName(metalModelName)} is ready` : modelConnectionIssue ? 'Model connection needs attention' : 'Model server is offline'
     : connected ? 'Local Jev is ready' : 'Local Jev is offline';
   $('connectionAddress').textContent = game.mode === 'human' ? 'Click a hole or press 1–9'
     : game.mode === 'demo' ? 'Runs in this browser'
@@ -327,7 +332,7 @@ function render() {
     paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
   }[game.phase];
   $('agentBadge').textContent = game.mode === 'human' ? 'HUMAN PLAYER' : game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'LOCAL MODEL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
-  $('modelName').textContent = game.mode === 'metal' ? metalModelName : game.mode === 'jev' ? jevModelName : game.mode === 'human' ? 'human player' : 'demo-bot';
+  $('modelName').textContent = game.mode === 'metal' ? modelDisplayName(metalModelName) : game.mode === 'jev' ? jevModelName : game.mode === 'human' ? 'human player' : 'demo-bot';
   $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${game.mode === 'human' ? 'human' : imageMode ? 'image' : 'text'} round <span>↗</span>`;
   $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} ${Math.abs(game.score) === 1 ? 'point' : 'points'}`;
   $('quickDetail').textContent = game.phase === 'idle'
@@ -362,15 +367,15 @@ function render() {
     : game.mode === 'demo' ? 'Scripted local bot, for previewing the arena.'
     : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect.' : 'Checking model servers…'
     : game.mode === 'jev' ? `DGX Spark Jev-style server: ${connected ? 'ready' : 'offline'}. Optional player.`
-      : modelConnectionIssue || `${metalModelName}: ${metalConnected ? 'ready' : 'offline'}.`;
-  $('modelSettingsHint').textContent = modelSettingsIssue || 'URL and model ID are saved in this browser. The key stays in this tab.';
+      : modelConnectionIssue || `${modelDisplayName(metalModelName)}: ${metalConnected ? 'ready' : 'offline'}.`;
+  $('modelSettingsHint').textContent = modelSettingsIssue || 'Connect reads model IDs from the server. URL and ID are saved here; the key stays in this tab.';
   $('controlHint').textContent = game.mode === 'human'
     ? 'Click a hole or press 1–9. Use the same seed and pressure settings to compare your score.'
     : game.mode === 'demo'
     ? 'Demo bot makes local choices. Choose a model to test inference.'
     : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect or Start.' : 'Checking model servers…'
     : game.mode === 'metal'
-      ? metalConnected ? `${metalModelName} is ready with ${imageMode ? 'image' : 'text'} input.`
+      ? metalConnected ? `${modelDisplayName(metalModelName)} is ready with ${imageMode ? 'image' : 'text'} input.`
         : modelConnectionIssue || `Model server is offline. Check ${metalConnection.baseUrl} and click Connect.`
       : connected ? `Local Jev (${jevModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
         : 'Local Jev is offline. Recheck the connection or use Demo bot.';
@@ -719,7 +724,7 @@ async function loadConnection() {
       if (!ids.length) {
         metalConnected = false;
         modelConnectionIssue = 'The server returned no models.';
-      } else if (ids.length === 1 && metalModelName === 'qwen35-metal' && !ids.includes(metalModelName)) {
+      } else if (ids.length === 1 && !ids.includes(metalModelName)) {
         metalModelName = ids[0];
         $('modelId').value = metalModelName;
         try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: metalConnection.baseUrl, modelId: metalModelName })); } catch { /* Storage is optional. */ }
@@ -771,7 +776,7 @@ $('resetModelSettings').addEventListener('click', () => {
   try { localStorage.removeItem(modelSettingsKey); } catch { /* Storage is optional. */ }
   metalConnection = parseModelBaseUrl(defaultModelBaseUrl);
   metalEndpoint = metalConnection.endpoint;
-  metalModelName = 'qwen35-metal';
+  metalModelName = defaultModelId;
   metalApiKey = '';
   useDirectModel = hostedBrowserModel;
   metalConnected = false;

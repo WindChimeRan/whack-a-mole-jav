@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createMetalRequest, parseMetalChoice } from './metal-client.js';
+import { defaultModelId } from './model-connection.js';
 
 export { parseMetalChoice } from './metal-client.js';
 
@@ -109,7 +110,7 @@ export function createAppServer({
   baseUrl = process.env.JEV_BASE_URL || 'http://127.0.0.1:8011',
   key = process.env.JEV_API_KEY || '',
   metalUrl = process.env.METAL_BASE_URL || 'http://127.0.0.1:8012',
-  metalModel = process.env.METAL_MODEL || 'qwen35-metal',
+  metalModel = process.env.METAL_MODEL || defaultModelId,
   metalKey = process.env.METAL_API_KEY || '',
 } = {}) {
   const decisionUrl = new URL('/v1/systemone', baseUrl).toString();

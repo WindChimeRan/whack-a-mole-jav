@@ -14,14 +14,14 @@ For the default Qwen image and text player, install [vLLM-metal](https://github.
 VLLM_METAL_MULTIMODAL_MODE=multimodal-native \
 VLLM_ENABLE_V1_MULTIPROCESSING=0 \
 vllm serve Qwen/Qwen3.5-0.8B \
-  --served-model-name qwen35-metal --max-model-len 2048 \
+  --max-model-len 2048 \
   --max-num-seqs 1 --gpu-memory-utilization 0.35 \
   --host 127.0.0.1 --port 8012
 ```
 
-Paged attention is enabled by default in vLLM-metal. The site expects `http://127.0.0.1:8012` and model ID `qwen35-metal`, matching that command. Click **Connect**, allow Chrome's prompt, then start the image round.
+Paged attention is enabled by default in vLLM-metal. The site expects `http://127.0.0.1:8012` and uses the standard served ID `Qwen/Qwen3.5-0.8B` from that command. Click **Connect**, allow Chrome's prompt, then start the image round. If your server exposes one model under a different ID, the page discovers and selects that ID from `/v1/models`.
 
-To use another served model, expand **Change model or server** on the first screen. Enter its base URL and model ID, or choose an ID returned by the server's `/v1/models` endpoint. The URL and model ID are saved in your browser; an optional bearer key is kept only in the current tab. Choose **Text** for text-only models. Image play requires a vision model, and decision requests require a vLLM-compatible `structured_outputs.choice` endpoint. Custom model connections use browser-direct timing.
+To use another served model, expand **Change model or server** on the first screen and enter its base URL. **Connect** reads `/v1/models` and fills in the ID when the server has one model; choose from the list if it serves several. The URL and model ID are saved in your browser; an optional bearer key is kept only in the current tab. Choose **Text** for text-only models. Image play requires a vision model, and decision requests require a vLLM-compatible `structured_outputs.choice` endpoint. Custom model connections use browser-direct timing.
 
 ## Run from source
 

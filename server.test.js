@@ -81,7 +81,7 @@ test('Qwen Metal is configured on loopback by default', async () => {
     const status = await (await fetch(`http://127.0.0.1:${server.address().port}/api/status`)).json();
     assert.equal(status.metalConfigured, true);
     assert.equal(status.metalEndpoint, '127.0.0.1:8012');
-    assert.equal(status.metalModel, 'qwen35-metal');
+    assert.equal(status.metalModel, 'Qwen/Qwen3.5-0.8B');
   } finally {
     server.close();
   }

@@ -1,3 +1,5 @@
+export const defaultModelId = 'Qwen/Qwen3.5-0.8B';
+
 export function parseModelBaseUrl(raw) {
   const value = raw.trim();
   let url;
