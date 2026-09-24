@@ -1,0 +1,465 @@
+const $ = (id) => document.getElementById(id);
+const holeElements = [...document.querySelectorAll('.hole')];
+const visionBoard = $('visionBoard');
+const visionContext = visionBoard.getContext('2d', { alpha: false });
+const canvasColumns = [100, 300, 500];
+const canvasRows = [86, 225, 364];
+const kinds = { mole: { points: 1, label: 'mole' }, gold: { points: 3, label: 'gold mole' }, bomb: { points: -2, label: 'bomb' } };
+
+const settings = { spawnMs: 1200, lifeMs: 1700, maxActive: 2, durationSec: 45, samples: 1 };
+const game = {
+  phase: 'idle', mode: 'jev', inputMode: 'text', holes: Array(9).fill(null), score: 0,
+  hits: 0, missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+  latencies: [], startedAt: 0, elapsedMs: 0, pausedAt: 0,
+  nextSpawnAt: 0, nextDecisionAt: 0, pending: false, runId: 0,
+  controller: null, boardVersion: 0, lastDecisionVersion: 0,
+};
+let connected = false;
+let actualModel = 'dgemma';
+
+function formatSeconds(ms) {
+  return `${Number((ms / 1000).toFixed(2))} s`;
+}
+
+function ellipse(x, y, rx, ry, color) {
+  visionContext.beginPath();
+  visionContext.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  visionContext.fillStyle = color;
+  visionContext.fill();
+}
+
+function drawVisionBoard() {
+  const ctx = visionContext;
+  ctx.fillStyle = '#2d4938';
+  ctx.fillRect(0, 0, 600, 450);
+  ctx.fillStyle = '#698361';
+  for (let x = 18; x < 600; x += 24) {
+    for (let y = 18; y < 450; y += 24) {
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  game.holes.forEach((hole, index) => {
+    const x = canvasColumns[index % 3];
+    const y = canvasRows[Math.floor(index / 3)];
+    ctx.font = '800 24px system-ui, sans-serif';
+    ctx.fillStyle = '#dce8c5';
+    ctx.fillText(String(index + 1).padStart(2, '0'), x - 82, y - 49);
+    ellipse(x, y + 23, 82, 36, '#71845c');
+    ellipse(x, y + 23, 70, 28, '#0e1d1b');
+    if (!hole) return;
+
+    const life = Math.max(0, Math.min(1, (hole.expiresAt - Date.now()) / settings.lifeMs));
+    ctx.fillStyle = '#13251d';
+    ctx.fillRect(x - 33, y - 67, 80, 6);
+    ctx.fillStyle = life < .3 ? '#f18d75' : '#d5ec91';
+    ctx.fillRect(x - 33, y - 67, 80 * life, 6);
+
+    if (hole.kind === 'bomb') {
+      ellipse(x, y - 14, 40, 41, '#424a49');
+      ellipse(x - 14, y - 22, 6, 7, '#131b1a');
+      ellipse(x + 14, y - 22, 6, 7, '#131b1a');
+      ellipse(x, y - 1, 7, 6, '#f48e67');
+      ctx.strokeStyle = '#f0905c';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y - 50);
+      ctx.lineTo(x + 24, y - 74);
+      ctx.stroke();
+      return;
+    }
+
+    const gold = hole.kind === 'gold';
+    const body = gold ? '#f3c75c' : '#b97e62';
+    ellipse(x - 29, y - 47, 16, 16, body);
+    ellipse(x + 29, y - 47, 16, 16, body);
+    ellipse(x, y - 19, 41, 47, body);
+    ellipse(x - 15, y - 25, 5, 7, '#1b281e');
+    ellipse(x + 15, y - 25, 5, 7, '#1b281e');
+    ellipse(x, y - 5, 8, 6, gold ? '#8f592f' : '#6d4038');
+    if (gold) {
+      ctx.strokeStyle = '#ffe791';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x + 52, y - 53);
+      ctx.lineTo(x + 52, y - 27);
+      ctx.moveTo(x + 39, y - 40);
+      ctx.lineTo(x + 65, y - 40);
+      ctx.stroke();
+    }
+  });
+}
+
+function holePoint(index) {
+  const stageRect = document.querySelector('.game-stage').getBoundingClientRect();
+  if (game.inputMode === 'image') {
+    const rect = visionBoard.getBoundingClientRect();
+    return {
+      x: rect.left - stageRect.left + canvasColumns[index % 3] / 600 * rect.width,
+      y: rect.top - stageRect.top + (canvasRows[Math.floor(index / 3)] + 23) / 450 * rect.height,
+    };
+  }
+  const rect = holeElements[index].getBoundingClientRect();
+  return {
+    x: rect.left - stageRect.left + rect.width / 2,
+    y: rect.top - stageRect.top + rect.height * .76,
+  };
+}
+
+function showImpact(index, label, kind, withHammer = true) {
+  const stage = document.querySelector('.game-stage');
+  const point = holePoint(index);
+  if (withHammer) {
+    const hammer = document.createElement('div');
+    hammer.className = 'hammer-action';
+    hammer.setAttribute('aria-hidden', 'true');
+    hammer.textContent = '🔨';
+    hammer.style.left = `${point.x}px`;
+    hammer.style.top = `${point.y}px`;
+    stage.append(hammer);
+    setTimeout(() => hammer.remove(), 1100);
+  }
+  const impact = document.createElement('div');
+  impact.className = `impact-popup ${kind}`;
+  impact.textContent = label;
+  impact.style.left = `${point.x}px`;
+  impact.style.top = `${point.y - 24}px`;
+  stage.append(impact);
+  setTimeout(() => impact.remove(), 850);
+}
+
+function elapsed() {
+  return game.elapsedMs + (game.phase === 'running' ? Date.now() - game.startedAt : 0);
+}
+
+function timeRemaining() {
+  return Math.max(0, settings.durationSec * 1000 - elapsed());
+}
+
+function event(message, result = '', type = '') {
+  const feed = $('eventFeed');
+  const empty = feed.querySelector('.feed-empty');
+  if (empty) empty.remove();
+  const row = document.createElement('li');
+  row.className = type;
+  const clock = document.createElement('span');
+  clock.className = 'feed-time';
+  clock.textContent = `${Math.floor(elapsed() / 1000)}s`;
+  const detail = document.createElement('span');
+  detail.textContent = message;
+  const outcome = document.createElement('b');
+  outcome.textContent = result;
+  row.append(clock, detail, outcome);
+  feed.prepend(row);
+  while (feed.children.length > 12) feed.lastElementChild.remove();
+  $('feedCount').textContent = `${feed.children.length} EVENTS`;
+}
+
+function renderChart() {
+  const chart = $('latencyBars');
+  chart.replaceChildren();
+  const points = [...Array(Math.max(0, 20 - game.latencies.length)).fill(0), ...game.latencies.slice(-20)];
+  for (const ms of points) {
+    const bar = document.createElement('span');
+    bar.className = `bar${ms > 1000 ? ' very-slow' : ms > 500 ? ' slow' : ''}`;
+    bar.style.height = `${ms ? Math.max(5, Math.min(100, ms / 1200 * 100)) : 3}%`;
+    bar.title = ms ? `${ms} ms` : 'No call yet';
+    chart.append(bar);
+  }
+}
+
+function render() {
+  const remaining = timeRemaining();
+  const seconds = Math.ceil(remaining / 1000);
+  $('roundTimer').textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  $('timerFill').style.width = `${remaining / (settings.durationSec * 1000) * 100}%`;
+  $('scoreBig').textContent = `${game.score < 0 ? '−' : ''}${String(Math.abs(game.score)).padStart(3, '0')}`;
+  $('hitStat').textContent = game.hits;
+  $('missStat').textContent = game.missed;
+  $('staleStat').textContent = game.stale;
+  $('decisionStat').textContent = game.decisions;
+  $('latencyStat').textContent = game.latencies.length
+    ? `${Math.round(game.latencies.reduce((sum, ms) => sum + ms, 0) / game.latencies.length)} ms`
+    : '—';
+  $('hitRateStat').textContent = game.hits + game.missed
+    ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
+    : '—';
+
+  holeElements.forEach((element, index) => {
+    const occupant = game.holes[index];
+    element.classList.toggle('active', Boolean(occupant));
+    element.classList.toggle('gold', occupant?.kind === 'gold');
+    element.classList.toggle('bomb', occupant?.kind === 'bomb');
+    element.setAttribute('aria-label', `Hole ${index + 1}: ${occupant?.kind || 'empty'}`);
+  });
+  const imageMode = game.inputMode === 'image';
+  $('gameBoard').hidden = imageMode;
+  visionBoard.hidden = !imageMode;
+  $('inputIndicator').textContent = imageMode ? 'IMAGE INPUT · MODEL VIEW' : 'TEXT STATE INPUT';
+  if (imageMode) drawVisionBoard();
+  const status = $('roundStatus');
+  status.className = `status-chip${game.phase === 'running' ? ' running' : game.phase === 'paused' ? ' paused' : ''}`;
+  status.textContent = {
+    idle: 'READY TO PLAY', running: game.pending ? 'DECIDING…' : 'ROUND LIVE',
+    paused: 'PAUSED', ended: 'ROUND COMPLETE',
+  }[game.phase];
+  $('stageMessage').textContent = {
+    idle: 'Hit start to release the moles', running: game.pending ? `${game.mode === 'jev' ? 'DiffusionGemma' : 'Demo bot'} is choosing…` : 'Watch the next move',
+    paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
+  }[game.phase];
+  $('agentBadge').textContent = game.mode === 'jev' ? `D-GEMMA · ${imageMode ? 'IMAGE' : 'TEXT'}` : 'DEMO BOT';
+  $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Running <span>↗</span>' : 'Start round <span>↗</span>';
+  $('startButton').disabled = game.phase === 'running';
+  $('pauseButton').disabled = game.phase !== 'running';
+  $('jevMode').disabled = ['running', 'paused'].includes(game.phase);
+  $('demoMode').disabled = ['running', 'paused'].includes(game.phase);
+  $('textInput').disabled = ['running', 'paused'].includes(game.phase);
+  $('imageInput').disabled = ['running', 'paused'].includes(game.phase);
+  $('lengthSelect').disabled = ['running', 'paused'].includes(game.phase);
+  $('jevMode').classList.toggle('selected', game.mode === 'jev');
+  $('demoMode').classList.toggle('selected', game.mode === 'demo');
+  $('textInput').classList.toggle('selected', !imageMode);
+  $('imageInput').classList.toggle('selected', imageMode);
+  $('inputNote').textContent = imageMode
+    ? 'Sends the displayed board pixels; mole locations stay out of the text.'
+    : 'Sends exact occupants and time remaining.';
+  $('controlHint').textContent = game.mode === 'demo'
+    ? 'Demo bot makes local choices. Switch to DiffusionGemma for model decisions.'
+    : connected ? `Using ${actualModel} on DGX Spark with ${imageMode ? 'image' : 'text'} input.`
+      : 'DGX Spark is offline. Recheck the connection or use Demo bot.';
+}
+
+function abortDecision() {
+  game.runId++;
+  game.controller?.abort();
+  game.controller = null;
+  game.pending = false;
+}
+
+function resetGame() {
+  abortDecision();
+  Object.assign(game, {
+    phase: 'idle', holes: Array(9).fill(null), score: 0, hits: 0,
+    missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+    latencies: [], startedAt: 0, elapsedMs: 0, pausedAt: 0,
+    nextSpawnAt: 0, nextDecisionAt: 0, boardVersion: 0, lastDecisionVersion: 0,
+  });
+  document.querySelectorAll('.hammer-action,.impact-popup').forEach((element) => element.remove());
+  $('eventFeed').innerHTML = '<li class="feed-empty">The action starts when you launch a round.</li>';
+  $('feedCount').textContent = '0 EVENTS';
+  renderChart();
+  render();
+}
+
+async function startGame() {
+  if (game.phase === 'paused') {
+    const shift = Date.now() - game.pausedAt;
+    game.holes.forEach((hole) => { if (hole) hole.expiresAt += shift; });
+    game.nextSpawnAt += shift;
+    game.startedAt = Date.now();
+    game.phase = 'running';
+    event('Round resumed', '', '');
+    render();
+    return;
+  }
+  if (game.mode === 'jev' && !connected) {
+    await loadConnection();
+    if (!connected) return;
+  }
+  resetGame();
+  game.phase = 'running';
+  game.startedAt = Date.now();
+  game.nextSpawnAt = Date.now() + 200;
+  event(`${game.mode === 'jev' ? `DiffusionGemma · ${game.inputMode}` : 'Demo bot'} entered the arena`, 'START');
+  render();
+}
+
+function pauseGame(message = 'Round paused') {
+  if (game.phase !== 'running') return;
+  game.elapsedMs = elapsed();
+  game.pausedAt = Date.now();
+  game.phase = 'paused';
+  abortDecision();
+  event(message, 'PAUSE');
+  render();
+}
+
+function endGame() {
+  if (game.phase !== 'running') return;
+  game.elapsedMs = settings.durationSec * 1000;
+  game.phase = 'ended';
+  abortDecision();
+  game.holes = Array(9).fill(null);
+  event(`Final score ${game.score} · ${game.hits} hits`, 'FINISH');
+  render();
+}
+
+function spawnMole(now) {
+  const active = game.holes.filter(Boolean).length;
+  if (active >= settings.maxActive) return;
+  const free = game.holes.flatMap((hole, index) => hole ? [] : [index]);
+  if (!free.length) return;
+  const index = free[Math.floor(Math.random() * free.length)];
+  const roll = Math.random();
+  const kind = roll < .11 ? 'bomb' : roll < .29 ? 'gold' : 'mole';
+  game.holes[index] = { kind, expiresAt: now + settings.lifeMs };
+  game.boardVersion++;
+}
+
+async function demoChoice(snapshot) {
+  const delay = 110 + Math.round(Math.random() * 160);
+  await new Promise((resolve) => setTimeout(resolve, delay));
+  const targets = snapshot.map((hole, index) => ({ hole, index }))
+    .filter(({ hole }) => hole && hole.kind !== 'bomb')
+    .sort((a, b) => (b.hole.kind === 'gold' ? 3 : 1) - (a.hole.kind === 'gold' ? 3 : 1) || a.hole.msLeft - b.hole.msLeft);
+  return { choice: targets.length ? `h${targets[0].index + 1}` : 'wait', confidence: 1, latencyMs: delay, model: 'demo-bot' };
+}
+
+async function decide() {
+  if (game.boardVersion === game.lastDecisionVersion) return;
+  game.lastDecisionVersion = game.boardVersion;
+  const now = Date.now();
+  const snapshot = game.holes.map((hole) => hole ? { kind: hole.kind, msLeft: Math.max(0, hole.expiresAt - now) } : null);
+  game.pending = true;
+  game.decisions++;
+  const runId = game.runId;
+  const controller = new AbortController();
+  game.controller = controller;
+  const requestedAt = performance.now();
+  render();
+  try {
+    let result;
+    if (game.mode === 'demo') {
+      result = await demoChoice(snapshot);
+    } else {
+      const request = game.inputMode === 'image'
+        ? { mode: 'image', image: visionBoard.toDataURL('image/png'), score: game.score, samples: settings.samples }
+        : { mode: 'text', holes: snapshot, score: game.score, samples: settings.samples };
+      const response = await fetch('/api/decide', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request), signal: controller.signal,
+      });
+      result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'DGX Spark request failed');
+    }
+    if (runId !== game.runId || game.phase !== 'running') return;
+    result.latencyMs = Math.round(performance.now() - requestedAt);
+    if (game.mode === 'jev') {
+      actualModel = result.model;
+      $('modelName').textContent = actualModel;
+    }
+    game.latencies.push(result.latencyMs);
+    renderChart();
+    const index = /^h[1-9]$/.test(result.choice) ? Number(result.choice.slice(1)) - 1 : -1;
+    if (index < 0) {
+      event('Chose to wait', `${result.latencyMs} ms`);
+      game.nextDecisionAt = Date.now() + 70;
+    } else {
+      const target = game.holes[index];
+      const label = `Hole ${index + 1}`;
+      if (!target) {
+        game.stale++;
+        showImpact(index, 'MISS', 'miss');
+        event(`${label} was empty on arrival`, `${result.latencyMs} ms`, 'stale');
+      } else {
+        const { points, label: kindLabel } = kinds[target.kind];
+        game.score += points;
+        if (points > 0) game.hits++;
+        else game.bombs++;
+        showImpact(index, points > 0 ? `+${points} HIT` : '−2 BOMB', target.kind === 'gold' ? 'gold' : points > 0 ? 'hit' : 'bomb');
+        game.holes[index] = null;
+        game.boardVersion++;
+        const element = holeElements[index];
+        element.classList.add('selected', 'whacked');
+        setTimeout(() => element.classList.remove('selected', 'whacked'), 230);
+        event(`${label}: ${kindLabel}`, `${points > 0 ? '+' : ''}${points} · ${result.latencyMs} ms`, points > 0 ? 'hit' : 'bomb');
+      }
+      game.nextDecisionAt = Date.now() + 70;
+    }
+  } catch (error) {
+    if (runId !== game.runId || error.name === 'AbortError') return;
+    game.errors++;
+    event(error.message, 'ERROR', 'error');
+    pauseGame('API error — round paused');
+  } finally {
+    if (runId === game.runId) {
+      game.pending = false;
+      game.controller = null;
+      render();
+    }
+  }
+}
+
+function tick() {
+  if (game.phase !== 'running') return;
+  const now = Date.now();
+  if (timeRemaining() <= 0) return endGame();
+  game.holes.forEach((hole, index) => {
+    if (hole && now >= hole.expiresAt) {
+      if (hole.kind !== 'bomb') {
+        game.missed++;
+        showImpact(index, 'ESCAPED', 'miss', false);
+        event(`Hole ${index + 1}: ${kinds[hole.kind].label} escaped`, 'MISSED', 'stale');
+      }
+      game.holes[index] = null;
+      game.boardVersion++;
+    }
+  });
+  if (now >= game.nextSpawnAt) {
+    spawnMole(now);
+    game.nextSpawnAt = now + settings.spawnMs;
+  }
+  if (!game.pending && now >= game.nextDecisionAt) decide();
+  render();
+}
+
+async function loadConnection() {
+  $('connectionLabel').textContent = 'Checking DGX Spark…';
+  try {
+    const response = await fetch('/api/status');
+    const status = await response.json();
+    connected = status.connected;
+    actualModel = status.model;
+    $('modelName').textContent = actualModel;
+    $('connectionAddress').textContent = `${status.endpoint} /v1/systemone`;
+    $('connectionLabel').textContent = connected ? 'DGX Spark is ready' : 'DGX Spark is offline';
+    $('connectionDot').classList.toggle('connected', connected);
+  } catch {
+    $('connectionLabel').textContent = 'Local server unavailable';
+    connected = false;
+  }
+  render();
+}
+
+$('checkConnection').addEventListener('click', loadConnection);
+
+$('spawnSlider').addEventListener('input', (event_) => {
+  settings.spawnMs = Number(event_.target.value);
+  $('spawnValue').textContent = formatSeconds(settings.spawnMs);
+  if (game.phase === 'running') game.nextSpawnAt = Date.now() + settings.spawnMs;
+});
+$('lifeSlider').addEventListener('input', (event_) => {
+  settings.lifeMs = Number(event_.target.value);
+  $('lifeValue').textContent = formatSeconds(settings.lifeMs);
+});
+$('crowdSelect').addEventListener('change', (event_) => { settings.maxActive = Number(event_.target.value); });
+$('samplesSelect').addEventListener('change', (event_) => {
+  settings.samples = event_.target.value === 'auto' ? 'auto' : Number(event_.target.value);
+});
+$('lengthSelect').addEventListener('change', (event_) => {
+  settings.durationSec = Number(event_.target.value);
+  render();
+});
+$('jevMode').addEventListener('click', () => { game.mode = 'jev'; render(); });
+$('demoMode').addEventListener('click', () => { game.mode = 'demo'; render(); });
+$('textInput').addEventListener('click', () => { game.inputMode = 'text'; render(); });
+$('imageInput').addEventListener('click', () => { game.inputMode = 'image'; render(); });
+$('startButton').addEventListener('click', startGame);
+$('pauseButton').addEventListener('click', () => pauseGame());
+$('resetButton').addEventListener('click', resetGame);
+
+renderChart();
+render();
+loadConnection();
+setInterval(tick, 50);
