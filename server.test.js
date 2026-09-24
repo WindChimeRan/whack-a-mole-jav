@@ -26,7 +26,7 @@ test('image request carries board pixels without the text occupancy list', () =>
 test('local server checks health and proxies a decision to the structured port', async () => {
   let observed;
   const server = createAppServer({
-    baseUrl: 'http://10.0.0.33:8011',
+    baseUrl: 'http://192.0.2.10:8011',
     key: '',
     fetchImpl: async (url, options) => {
       observed = { url, options };
@@ -46,7 +46,8 @@ test('local server checks health and proxies a decision to the structured port',
     const address = `http://127.0.0.1:${server.address().port}`;
     const status = await (await fetch(`${address}/api/status`)).json();
     assert.equal(status.connected, true);
-    assert.equal(status.endpoint, '10.0.0.33:8011');
+    assert.equal(status.model, 'jev-latest');
+    assert.equal(status.endpoint, '192.0.2.10:8011');
     const response = await fetch(`${address}/api/decide`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ holes: board, score: 4, samples: 4 }),
@@ -57,7 +58,7 @@ test('local server checks health and proxies a decision to the structured port',
     assert.equal(result.model, 'dgemma');
     assert.equal(result.modelMs, 123);
     assert.ok(result.proxyMs >= 0);
-    assert.equal(observed.url, 'http://10.0.0.33:8011/v1/systemone');
+    assert.equal(observed.url, 'http://192.0.2.10:8011/v1/systemone');
     assert.equal(observed.options.headers.Authorization, undefined);
     assert.equal(JSON.parse(observed.options.body).questions.action.type, 'choice');
     assert.equal(JSON.parse(observed.options.body).samples, 4);

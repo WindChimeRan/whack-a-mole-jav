@@ -96,7 +96,7 @@ export function makeJevRequest({ mode = 'text', holes, image, score, samples = 1
 
 export function createAppServer({
   fetchImpl = fetch,
-  baseUrl = process.env.JEV_BASE_URL || 'http://10.0.0.33:8011',
+  baseUrl = process.env.JEV_BASE_URL || 'http://127.0.0.1:8011',
   key = process.env.JEV_API_KEY || '',
 } = {}) {
   const decisionUrl = new URL('/v1/systemone', baseUrl).toString();
@@ -116,7 +116,7 @@ export function createAppServer({
         } catch {
           connected = false;
         }
-        return json(res, 200, { connected, model: 'dgemma', endpoint });
+        return json(res, 200, { connected, model, endpoint });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/decide') {
@@ -134,15 +134,15 @@ export function createAppServer({
             signal: AbortSignal.timeout(8_000),
           });
         } catch (error) {
-          return json(res, 502, { error: `Could not reach DGX Spark: ${error.name === 'TimeoutError' ? 'request timed out' : 'network error'}.` });
+          return json(res, 502, { error: `Could not reach the decision server: ${error.name === 'TimeoutError' ? 'request timed out' : 'network error'}.` });
         }
         if (!response.ok) {
-          return json(res, 502, { error: `DGX Spark returned HTTP ${response.status}.` });
+          return json(res, 502, { error: `Decision server returned HTTP ${response.status}.` });
         }
         const result = await response.json();
         const answer = result?.answers?.action;
         if (answer?.type !== 'choice' || !/^(h[1-9]|wait)$/.test(answer.choice)) {
-          return json(res, 502, { error: 'DGX Spark returned an unexpected choice response.' });
+          return json(res, 502, { error: 'Decision server returned an unexpected choice response.' });
         }
         return json(res, 200, {
           choice: answer.choice,

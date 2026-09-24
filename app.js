@@ -10,7 +10,7 @@ const canvasColumns = [100, 300, 500];
 const canvasRows = [86, 225, 364];
 const kinds = { mole: { points: 1, label: 'mole' }, gold: { points: 3, label: 'gold mole' }, bomb: { points: -2, label: 'bomb' } };
 
-const settings = { spawnMs: 1200, lifeMs: 1700, maxActive: 2, durationSec: 45, samples: 1, seed: 42 };
+const settings = { spawnMs: 600, lifeMs: 1100, maxActive: 3, durationSec: 30, samples: 1, seed: 42 };
 
 function seededRandom(seed) {
   let value = seed >>> 0;
@@ -23,7 +23,7 @@ function seededRandom(seed) {
 }
 
 const game = {
-  phase: 'idle', mode: 'jev', inputMode: 'text', holes: Array(9).fill(null), score: 0,
+  phase: 'idle', mode: 'jev', inputMode: 'image', holes: Array(9).fill(null), score: 0,
   hits: 0, missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
   latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
   startedAt: 0, elapsedMs: 0, pausedAt: 0,
@@ -33,7 +33,7 @@ const game = {
   spawnAttempts: 0, spawned: 0, scheduleHash: 2166136261,
 };
 let connected = false;
-let actualModel = 'dgemma';
+let actualModel = 'jev-latest';
 
 function formatSeconds(ms) {
   return `${Number((ms / 1000).toFixed(2))} s`;
@@ -228,8 +228,8 @@ function render() {
   $('prepStat').textContent = averageMs(game.timing.prepTotal, game.timing.count);
   $('roundtripStat').textContent = averageMs(game.timing.tripTotal, game.timing.count);
   $('scheduleStat').textContent = `Seed ${game.seed} · ${game.spawned}/${game.spawnAttempts} spawns · plan ${game.scheduleHash.toString(16).padStart(8, '0')}`;
-  $('latencyLabel').textContent = game.mode === 'demo' ? 'DEMO DELAY' : 'DGX DECISION';
-  $('chartTitle').textContent = game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'DGX DECISION TIME';
+  $('latencyLabel').textContent = game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
+  $('chartTitle').textContent = game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
   $('hitRateStat').textContent = game.hits + game.missed
     ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
     : '—';
@@ -255,11 +255,15 @@ function render() {
     paused: 'PAUSED', ended: 'ROUND COMPLETE',
   }[game.phase];
   $('stageMessage').textContent = {
-    idle: 'Hit start to release the moles', running: game.pending ? `${game.mode === 'jev' ? 'DiffusionGemma' : 'Demo bot'} is choosing…` : 'Watch the next move',
+    idle: 'Hit start to release the moles', running: game.pending ? `${game.mode === 'jev' ? 'Local Jev' : 'Demo bot'} is choosing…` : 'Watch the next move',
     paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
   }[game.phase];
-  $('agentBadge').textContent = game.mode === 'jev' ? `D-GEMMA · ${imageMode ? 'IMAGE' : 'TEXT'}` : 'DEMO BOT';
-  $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Running <span>↗</span>' : 'Start round <span>↗</span>';
+  $('agentBadge').textContent = game.mode === 'jev' ? `LOCAL JEV · ${imageMode ? 'IMAGE' : 'TEXT'}` : 'DEMO BOT';
+  $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${imageMode ? 'image' : 'text'} round <span>↗</span>`;
+  $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} points`;
+  $('quickDetail').textContent = game.phase === 'idle'
+    ? `${imageMode ? 'Image' : 'Text'} input · seed ${settings.seed} · ${settings.durationSec} seconds`
+    : `${game.hits} hits · ${game.missed} escaped · ${game.stale} stale`;
   $('startButton').disabled = game.phase === 'running';
   $('pauseButton').disabled = game.phase !== 'running';
   $('jevMode').disabled = ['running', 'paused'].includes(game.phase);
@@ -277,9 +281,9 @@ function render() {
     ? 'Sends the displayed board pixels; mole locations stay out of the text.'
     : 'Sends exact occupants and time remaining.';
   $('controlHint').textContent = game.mode === 'demo'
-    ? 'Demo bot makes local choices. Switch to DiffusionGemma for model decisions.'
-    : connected ? `Using ${actualModel} on DGX Spark with ${imageMode ? 'image' : 'text'} input.`
-      : 'DGX Spark is offline. Recheck the connection or use Demo bot.';
+    ? 'Demo bot makes local choices. Switch to Local Jev for model decisions.'
+    : connected ? `Local Jev (${actualModel}) is ready with ${imageMode ? 'image' : 'text'} input.`
+      : 'Local Jev is offline. Recheck the connection or use Demo bot.';
 }
 
 function abortDecision() {
@@ -316,6 +320,7 @@ async function startGame() {
     game.phase = 'running';
     event('Round resumed', '', '');
     render();
+    document.querySelector('.board-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
   if (game.mode === 'jev' && !connected) {
@@ -326,8 +331,9 @@ async function startGame() {
   game.phase = 'running';
   game.startedAt = Date.now();
   game.nextSpawnAt = Date.now() + 250;
-  event(`${game.mode === 'jev' ? `DiffusionGemma · ${game.inputMode}` : 'Demo bot'} · seed ${game.seed}`, 'START');
+  event(`${game.mode === 'jev' ? `Local Jev · ${game.inputMode}` : 'Demo bot'} · seed ${game.seed}`, 'START');
   render();
+  document.querySelector('.board-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function pauseGame(message = 'Round paused') {
@@ -348,6 +354,7 @@ function endGame() {
   game.holes = Array(9).fill(null);
   event(`Final score ${game.score} · ${game.hits} hits`, 'FINISH');
   render();
+  document.querySelector('.quick-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function spawnMole(now) {
@@ -408,7 +415,7 @@ async function decide() {
         body, signal: controller.signal,
       }).then(async (response) => {
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'DGX Spark request failed');
+        if (!response.ok) throw new Error(result.error || 'Decision server request failed');
         return result;
       });
     }
@@ -437,7 +444,7 @@ async function decide() {
     game.timing.count++;
     renderChart();
     const timing = Number.isFinite(result.modelMs)
-      ? `${Math.round(result.modelMs)} ms DGX`
+      ? `${Math.round(result.modelMs)} ms model`
       : `${Math.round(result.roundTripMs)} ms trip`;
     const index = /^h[1-9]$/.test(result.choice) ? Number(result.choice.slice(1)) - 1 : -1;
     if (index < 0) {
@@ -516,7 +523,7 @@ function tick() {
 }
 
 async function loadConnection() {
-  $('connectionLabel').textContent = 'Checking DGX Spark…';
+  $('connectionLabel').textContent = 'Checking Local Jev…';
   try {
     const response = await fetch('/api/status');
     const status = await response.json();
@@ -524,7 +531,7 @@ async function loadConnection() {
     actualModel = status.model;
     $('modelName').textContent = actualModel;
     $('connectionAddress').textContent = `${status.endpoint} /v1/systemone`;
-    $('connectionLabel').textContent = connected ? 'DGX Spark is ready' : 'DGX Spark is offline';
+    $('connectionLabel').textContent = connected ? 'Local Jev is ready' : 'Local Jev is offline';
     $('connectionDot').classList.toggle('connected', connected);
   } catch {
     $('connectionLabel').textContent = 'Local server unavailable';
