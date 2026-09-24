@@ -23,8 +23,9 @@ function seededRandom(seed) {
 }
 
 const game = {
-  phase: 'idle', mode: 'jev', inputMode: 'image', holes: Array(9).fill(null), score: 0,
+  phase: 'idle', mode: 'metal', inputMode: 'image', holes: Array(9).fill(null), score: 0,
   hits: 0, missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+  reactionMin: Infinity, reactionMax: 0,
   latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
   startedAt: 0, elapsedMs: 0, pausedAt: 0,
   nextSpawnAt: 0, nextDecisionAt: 0, pending: false, runId: 0,
@@ -33,15 +34,16 @@ const game = {
   spawnAttempts: 0, spawned: 0, scheduleHash: 2166136261,
 };
 let connected = false;
-let metalConfigured = false;
+let metalConfigured = true;
 let metalConnected = false;
+let connectionChecked = false;
 let jevModelName = 'jev-latest';
-let metalModelName = 'Qwen/Qwen3.5-0.8B';
+let metalModelName = 'qwen35-metal';
 let jevEndpoint = 'localhost:8011';
 let metalEndpoint = 'localhost:8012';
 
 function playerName() {
-  return game.mode === 'metal' ? 'Qwen Metal' : game.mode === 'jev' ? 'Local Jev' : 'Demo bot';
+  return { metal: 'Qwen Metal', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];
 }
 
 function formatSeconds(ms) {
@@ -234,22 +236,38 @@ function render() {
   $('staleStat').textContent = game.stale;
   $('decisionStat').textContent = game.decisions;
   $('latencyStat').textContent = averageMs(game.timing.modelTotal, game.timing.modelCount);
-  $('prepStat').textContent = averageMs(game.timing.prepTotal, game.timing.count);
-  $('roundtripStat').textContent = averageMs(game.timing.tripTotal, game.timing.count);
+  $('prepStat').textContent = game.mode === 'human'
+    ? Number.isFinite(game.reactionMin) ? `${game.reactionMin} ms` : '—'
+    : averageMs(game.timing.prepTotal, game.timing.count);
+  $('roundtripStat').textContent = game.mode === 'human'
+    ? game.reactionMax ? `${game.reactionMax} ms` : '—'
+    : averageMs(game.timing.tripTotal, game.timing.count);
   $('scheduleStat').textContent = `Seed ${game.seed} · ${game.spawned}/${game.spawnAttempts} spawns · plan ${game.scheduleHash.toString(16).padStart(8, '0')}`;
-  $('latencyLabel').textContent = game.mode === 'metal' ? 'METAL REQUEST' : game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
-  $('chartTitle').textContent = game.mode === 'metal' ? 'METAL REQUEST TIME' : game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
-  $('timingNote').textContent = game.mode === 'metal'
+  $('staleLabel').textContent = game.mode === 'human' ? 'EMPTY SWINGS' : 'STALE CALLS';
+  $('latencyLabel').textContent = game.mode === 'human' ? 'REACTION' : game.mode === 'metal' ? 'METAL REQUEST' : game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
+  $('prepLabel').textContent = game.mode === 'human' ? 'FASTEST HIT' : 'APP PREP';
+  $('roundtripLabel').textContent = game.mode === 'human' ? 'SLOWEST HIT' : 'ROUND TRIP';
+  $('decisionLabel').textContent = game.mode === 'human' ? 'SWINGS' : 'DECISIONS SENT';
+  $('hitRateLabel').textContent = game.mode === 'human' ? 'CATCH RATE' : 'HIT RATE';
+  $('chartTitle').textContent = game.mode === 'human' ? 'HUMAN REACTION TIME' : game.mode === 'metal' ? 'METAL REQUEST TIME' : game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
+  $('timingNote').textContent = game.mode === 'human'
+    ? 'Reaction time runs from a mole appearing to your click on an occupied hole. Empty swings have no reaction time.'
+    : game.mode === 'metal'
     ? 'Metal request time is measured by the local proxy, including inference. App prep includes frame capture; round trip also includes browser transfer.'
     : game.mode === 'demo' ? 'Demo delay is a local simulation. App prep and round trip are still measured.'
       : 'Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.';
-  $('connectionLabel').textContent = game.mode === 'metal'
+  $('connectionLabel').textContent = game.mode === 'human' ? 'Human player is ready'
+    : game.mode === 'demo' ? 'Demo bot is ready'
+    : !connectionChecked ? 'Checking model servers…'
+    : game.mode === 'metal'
     ? metalConnected ? 'Qwen Metal is ready' : 'Qwen Metal is offline'
     : connected ? 'Local Jev is ready' : 'Local Jev is offline';
-  $('connectionAddress').textContent = game.mode === 'metal'
+  $('connectionAddress').textContent = game.mode === 'human' ? 'Click a hole or press 1–9'
+    : game.mode === 'demo' ? 'Runs in this browser'
+    : game.mode === 'metal'
     ? `${metalEndpoint} /v1/chat/completions`
     : `${jevEndpoint} /v1/systemone`;
-  $('connectionDot').classList.toggle('connected', game.mode === 'metal' ? metalConnected : connected);
+  $('connectionDot').classList.toggle('connected', game.mode === 'human' || game.mode === 'demo' || (game.mode === 'metal' ? metalConnected : connected));
   $('hitRateStat').textContent = game.hits + game.missed
     ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
     : '—';
@@ -266,46 +284,58 @@ function render() {
   }
   $('gameBoard').hidden = imageMode;
   visionBoard.hidden = !imageMode;
-  $('inputIndicator').textContent = imageMode ? 'IMAGE INPUT · MODEL VIEW' : 'TEXT STATE INPUT';
+  visionBoard.classList.toggle('human-play', game.mode === 'human');
+  $('inputIndicator').textContent = game.mode === 'human' ? 'HUMAN · CLICK OR PRESS 1–9' : imageMode ? 'IMAGE INPUT · MODEL VIEW' : 'TEXT STATE INPUT';
   if (imageMode) drawVisionBoard();
   const status = $('roundStatus');
   status.className = `status-chip${game.phase === 'running' ? ' running' : game.phase === 'paused' ? ' paused' : ''}`;
   status.textContent = {
-    idle: 'READY TO PLAY', running: game.pending ? 'DECIDING…' : 'ROUND LIVE',
+    idle: 'READY TO PLAY', running: game.mode === 'human' ? 'YOUR TURN' : game.pending ? 'DECIDING…' : 'ROUND LIVE',
     paused: 'PAUSED', ended: 'ROUND COMPLETE',
   }[game.phase];
   $('stageMessage').textContent = {
-    idle: 'Hit start to release the moles', running: game.pending ? `${playerName()} is choosing…` : 'Watch the next move',
+    idle: 'Hit start to release the moles', running: game.mode === 'human' ? 'Click a mole before it disappears' : game.pending ? `${playerName()} is choosing…` : 'Watch the next move',
     paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
   }[game.phase];
-  $('agentBadge').textContent = game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'QWEN METAL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
-  $('modelName').textContent = game.mode === 'metal' ? metalModelName : game.mode === 'demo' ? 'demo-bot' : jevModelName;
-  $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${imageMode ? 'image' : 'text'} round <span>↗</span>`;
-  $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} points`;
+  $('agentBadge').textContent = game.mode === 'human' ? 'HUMAN PLAYER' : game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'QWEN METAL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
+  $('modelName').textContent = game.mode === 'metal' ? metalModelName : game.mode === 'jev' ? jevModelName : game.mode === 'human' ? 'human player' : 'demo-bot';
+  $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${game.mode === 'human' ? 'human' : imageMode ? 'image' : 'text'} round <span>↗</span>`;
+  $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} ${Math.abs(game.score) === 1 ? 'point' : 'points'}`;
   $('quickDetail').textContent = game.phase === 'idle'
-    ? `${playerName()} · ${imageMode ? 'image' : 'text'} · seed ${settings.seed}`
-    : `${game.hits} hits · ${game.missed} escaped · ${game.stale} stale`;
+    ? `${playerName()} · ${game.mode === 'human' ? 'same board' : imageMode ? 'image' : 'text'} · seed ${settings.seed}`
+    : `${game.hits} ${game.hits === 1 ? 'hit' : 'hits'} · ${game.missed} escaped · ${game.stale} ${game.mode === 'human' ? 'empty swings' : 'stale'}`;
   $('startButton').disabled = game.phase === 'running';
   $('pauseButton').disabled = game.phase !== 'running';
   $('jevMode').disabled = ['running', 'paused'].includes(game.phase);
   $('metalMode').disabled = ['running', 'paused'].includes(game.phase) || !metalConfigured;
+  $('humanMode').disabled = ['running', 'paused'].includes(game.phase);
   $('demoMode').disabled = ['running', 'paused'].includes(game.phase);
-  $('textInput').disabled = ['running', 'paused'].includes(game.phase);
-  $('imageInput').disabled = ['running', 'paused'].includes(game.phase);
+  $('textInput').disabled = ['running', 'paused'].includes(game.phase) || game.mode === 'human';
+  $('imageInput').disabled = ['running', 'paused'].includes(game.phase) || game.mode === 'human';
   $('lengthSelect').disabled = ['running', 'paused'].includes(game.phase);
   $('seedInput').disabled = ['running', 'paused'].includes(game.phase);
   $('imagePreset').disabled = ['running', 'paused'].includes(game.phase);
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
   $('metalMode').classList.toggle('selected', game.mode === 'metal');
+  $('humanMode').classList.toggle('selected', game.mode === 'human');
   $('demoMode').classList.toggle('selected', game.mode === 'demo');
   $('samplesSelect').disabled = game.mode !== 'jev';
   $('textInput').classList.toggle('selected', !imageMode);
   $('imageInput').classList.toggle('selected', imageMode);
-  $('inputNote').textContent = imageMode
-    ? 'Sends the displayed board pixels; mole locations stay out of the text.'
-    : 'Sends exact occupants and time remaining.';
-  $('controlHint').textContent = game.mode === 'demo'
+  $('inputLabel').textContent = game.mode === 'human' ? 'YOUR VIEW' : 'MODEL INPUT';
+  $('inputNote').textContent = game.mode === 'human' ? 'Click a hole or press 1–9 while the round runs.'
+    : imageMode ? 'Sends the displayed board pixels; mole locations stay out of the text.'
+      : 'Sends exact occupants and time remaining.';
+  $('playerNote').textContent = game.mode === 'human' ? 'No model server needed. Use the same seed and pressure settings.'
+    : game.mode === 'demo' ? 'Scripted local bot, for previewing the arena.'
+    : !connectionChecked ? 'Checking model servers…'
+    : game.mode === 'jev' ? `DGX Spark Jev-style server: ${connected ? 'ready' : 'offline'}. Optional player.`
+      : `Qwen3.5-0.8B on vLLM-metal: ${metalConnected ? 'ready' : 'offline'}.`;
+  $('controlHint').textContent = game.mode === 'human'
+    ? 'Click a hole or press 1–9. Use the same seed and pressure settings to compare your score.'
+    : game.mode === 'demo'
     ? 'Demo bot makes local choices. Choose a model to test inference.'
+    : !connectionChecked ? 'Checking model servers…'
     : game.mode === 'metal'
       ? metalConnected ? `Qwen Metal (${metalModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
         : 'Qwen Metal is offline. Start vLLM-metal, then recheck the connection.'
@@ -325,6 +355,7 @@ function resetGame() {
   Object.assign(game, {
     phase: 'idle', holes: Array(9).fill(null), score: 0, hits: 0,
     missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+    reactionMin: Infinity, reactionMax: 0,
     latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
     startedAt: 0, elapsedMs: 0, pausedAt: 0,
     nextSpawnAt: 0, nextDecisionAt: 0, boardVersion: 0, lastDecisionVersion: 0,
@@ -401,7 +432,7 @@ function spawnMole(now) {
   if (active >= settings.maxActive || game.holes[index]) {
     return;
   }
-  game.holes[index] = { kind, expiresAt: now + settings.lifeMs, lifeMs: settings.lifeMs };
+  game.holes[index] = { kind, spawnedAt: now, expiresAt: now + settings.lifeMs, lifeMs: settings.lifeMs };
   game.spawned++;
   game.boardVersion++;
 }
@@ -413,6 +444,49 @@ async function demoChoice(snapshot) {
     .filter(({ hole }) => hole && hole.kind !== 'bomb')
     .sort((a, b) => (b.hole.kind === 'gold' ? 3 : 1) - (a.hole.kind === 'gold' ? 3 : 1) || a.hole.msLeft - b.hole.msLeft);
   return { choice: targets.length ? `h${targets[0].index + 1}` : 'wait', confidence: 1, latencyMs: delay, model: 'demo-bot' };
+}
+
+function whack(index, timing = '', human = false) {
+  const target = game.holes[index];
+  const label = `Hole ${index + 1}`;
+  if (!target) {
+    game.stale++;
+    showImpact(index, 'MISS', 'miss');
+    event(`${label} was empty${human ? '' : ' on arrival'}`, human ? 'MISS' : timing, 'stale');
+    return;
+  }
+
+  const { points, label: kindLabel } = kinds[target.kind];
+  if (human) {
+    const reactionMs = Math.max(0, Date.now() - target.spawnedAt);
+    game.latencies.push(reactionMs);
+    if (game.latencies.length > 20) game.latencies.shift();
+    game.timing.modelTotal += reactionMs;
+    game.timing.modelCount++;
+    game.reactionMin = Math.min(game.reactionMin, reactionMs);
+    game.reactionMax = Math.max(game.reactionMax, reactionMs);
+    timing = `${reactionMs} ms reaction`;
+  }
+  game.score += points;
+  if (points > 0) game.hits++;
+  else game.bombs++;
+  showImpact(index, points > 0 ? `+${points} HIT` : '−2 BOMB', target.kind === 'gold' ? 'gold' : points > 0 ? 'hit' : 'bomb');
+  game.holes[index] = null;
+  game.boardVersion++;
+  const element = holeElements[index];
+  element.classList.add('selected', 'whacked');
+  setTimeout(() => element.classList.remove('selected', 'whacked'), 230);
+  event(`${label}: ${kindLabel}`, `${points > 0 ? '+' : ''}${points} · ${timing}`, points > 0 ? 'hit' : 'bomb');
+}
+
+function humanWhack(index) {
+  if (game.mode !== 'human' || game.phase !== 'running' || index < 0 || index > 8) return;
+  if (timeRemaining() <= 0) return endGame();
+  expireMoles(Date.now());
+  game.decisions++;
+  whack(index, '', true);
+  renderChart();
+  render();
 }
 
 async function decide() {
@@ -484,25 +558,7 @@ async function decide() {
       event('Chose to wait', timing);
       game.nextDecisionAt = Date.now() + 70;
     } else {
-      const target = game.holes[index];
-      const label = `Hole ${index + 1}`;
-      if (!target) {
-        game.stale++;
-        showImpact(index, 'MISS', 'miss');
-        event(`${label} was empty on arrival`, timing, 'stale');
-      } else {
-        const { points, label: kindLabel } = kinds[target.kind];
-        game.score += points;
-        if (points > 0) game.hits++;
-        else game.bombs++;
-        showImpact(index, points > 0 ? `+${points} HIT` : '−2 BOMB', target.kind === 'gold' ? 'gold' : points > 0 ? 'hit' : 'bomb');
-        game.holes[index] = null;
-        game.boardVersion++;
-        const element = holeElements[index];
-        element.classList.add('selected', 'whacked');
-        setTimeout(() => element.classList.remove('selected', 'whacked'), 230);
-        event(`${label}: ${kindLabel}`, `${points > 0 ? '+' : ''}${points} · ${timing}`, points > 0 ? 'hit' : 'bomb');
-      }
+      whack(index, timing);
       game.nextDecisionAt = Date.now() + 70;
     }
   } catch (error) {
@@ -548,7 +604,7 @@ function tick() {
     game.nextSpawnAt = following > now ? following : now + settings.spawnMs;
     changed ||= game.boardVersion !== before;
   }
-  if (!game.pending && now >= game.nextDecisionAt && game.boardVersion !== game.lastDecisionVersion) {
+  if (game.mode !== 'human' && !game.pending && now >= game.nextDecisionAt && game.boardVersion !== game.lastDecisionVersion) {
     void decide();
   } else if (changed) {
     render();
@@ -556,7 +612,8 @@ function tick() {
 }
 
 async function loadConnection() {
-  $('connectionLabel').textContent = 'Checking Local Jev…';
+  connectionChecked = false;
+  render();
   try {
     const response = await fetch('/api/status');
     const status = await response.json();
@@ -567,14 +624,12 @@ async function loadConnection() {
     metalModelName = status.metalModel || metalModelName;
     jevEndpoint = status.endpoint || jevEndpoint;
     metalEndpoint = status.metalEndpoint || metalEndpoint;
-    $('metalNote').textContent = metalConfigured
-      ? `Qwen3.5-0.8B on vLLM-metal: ${metalConnected ? 'ready' : 'offline'}. Experimental text and image path.`
-      : 'Qwen3.5-0.8B is optional. Set METAL_BASE_URL to enable it.';
   } catch {
     $('connectionLabel').textContent = 'Local server unavailable';
     connected = false;
     metalConnected = false;
   }
+  connectionChecked = true;
   render();
 }
 
@@ -618,14 +673,33 @@ $('imagePreset').addEventListener('click', () => {
   $('lifeValue').textContent = formatSeconds(settings.lifeMs);
   resetGame();
 });
-$('jevMode').addEventListener('click', () => { game.mode = 'jev'; render(); });
-$('metalMode').addEventListener('click', () => { game.mode = 'metal'; render(); });
-$('demoMode').addEventListener('click', () => { game.mode = 'demo'; render(); });
-$('textInput').addEventListener('click', () => { game.inputMode = 'text'; render(); });
-$('imageInput').addEventListener('click', () => { game.inputMode = 'image'; render(); });
+function selectPlayer(mode) {
+  if (game.mode === mode) return;
+  game.mode = mode;
+  if (mode === 'human') game.inputMode = 'image';
+  resetGame();
+}
+
+$('jevMode').addEventListener('click', () => selectPlayer('jev'));
+$('metalMode').addEventListener('click', () => selectPlayer('metal'));
+$('humanMode').addEventListener('click', () => selectPlayer('human'));
+$('demoMode').addEventListener('click', () => selectPlayer('demo'));
+$('textInput').addEventListener('click', () => { if (game.inputMode !== 'text') { game.inputMode = 'text'; resetGame(); } });
+$('imageInput').addEventListener('click', () => { if (game.inputMode !== 'image') { game.inputMode = 'image'; resetGame(); } });
 $('startButton').addEventListener('click', startGame);
 $('pauseButton').addEventListener('click', () => pauseGame());
 $('resetButton').addEventListener('click', resetGame);
+visionBoard.addEventListener('pointerdown', (event_) => {
+  const rect = visionBoard.getBoundingClientRect();
+  const column = Math.floor((event_.clientX - rect.left) / rect.width * 3);
+  const row = Math.floor((event_.clientY - rect.top) / rect.height * 3);
+  if (column >= 0 && column < 3 && row >= 0 && row < 3) humanWhack(row * 3 + column);
+});
+holeElements.forEach((element, index) => element.addEventListener('pointerdown', () => humanWhack(index)));
+document.addEventListener('keydown', (event_) => {
+  if (!/^[1-9]$/.test(event_.key) || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(event_.target.tagName)) return;
+  humanWhack(Number(event_.key) - 1);
+});
 
 renderChart();
 render();

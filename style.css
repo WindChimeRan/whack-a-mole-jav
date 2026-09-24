@@ -26,13 +26,15 @@
 .quick-input .preset-button{margin-top:7px;padding:7px 9px}
 .quick-input .preset-button span{font-size:9px}
 .quick-input .input-label{margin-top:10px}
-.backend-options button{font-size:10px;padding:8px 4px}
+.backend-options button{font-size:10px;padding:8px 4px;white-space:nowrap}
 .control-grid{grid-template-columns:1fr 1fr .9fr}
 .control-footer{padding-top:14px;margin-top:15px}
 @media(max-width:1100px){.quick-card{grid-template-columns:1fr 1fr}.quick-play{grid-column:1/-1}}
 @media(max-width:700px){.intro{padding:16px 0 12px}.intro h1{font-size:39px;margin:5px 0 7px}.intro-copy{font-size:12px;line-height:1.35}.connection-card{margin-top:12px;padding:10px 12px;border-radius:12px}.connection-card .microcopy{font-size:9px;margin-top:5px}.quick-card{display:grid;grid-template-columns:1fr;gap:10px;padding:12px 13px;margin-bottom:12px}.quick-play{grid-column:auto}.quick-buttons{margin-top:7px}.quick-buttons button{padding:10px 8px}.quick-result strong{font-size:23px;margin-top:3px}.quick-input .segmented{margin-top:5px}.quick-input .preset-button{margin-top:6px}}
 .game-board[hidden],.vision-board[hidden]{display:none}
 .vision-board{position:relative;z-index:1;display:block;width:min(100%,490px);height:auto;border:1px solid #69805d;border-radius:14px;box-shadow:0 18px 28px #142a2550}
+.vision-board.human-play{cursor:crosshair;touch-action:manipulation}
+.vision-board:focus-visible{outline:3px solid #f2cb72;outline-offset:4px}
 .input-label{display:block;margin-top:19px}
 .input-indicator{position:absolute;top:11px;right:14px;z-index:3;border:1px solid #89a78070;border-radius:100px;padding:5px 8px;background:#15271fcf;color:#cde6b0;font-size:9px;font-weight:850;letter-spacing:.12em}
 .hammer-action{position:absolute;z-index:8;pointer-events:none;font-size:76px;line-height:1;width:85px;height:85px;filter:drop-shadow(0 5px 3px #101b19a0);animation:hammer-strike 1.05s ease-in-out forwards}

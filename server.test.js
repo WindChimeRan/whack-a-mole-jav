@@ -36,7 +36,7 @@ test('Qwen Metal requests keep image observations visual and parse bounded label
   assert.equal(parseMetalChoice('h1 h3'), null);
 });
 
-test('optional Qwen Metal backend proxies chat completions separately', async () => {
+test('Qwen Metal backend proxies chat completions separately', async () => {
   let observed;
   const server = createAppServer({
     baseUrl: 'http://192.0.2.10:8011', metalUrl: 'http://127.0.0.1:8012', metalModel: 'qwen35-metal',
@@ -58,7 +58,7 @@ test('optional Qwen Metal backend proxies chat completions separately', async ()
     assert.equal(status.metalConnected, true);
     const response = await fetch(`${address}/api/decide`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backend: 'metal', mode: 'text', holes: board, score: 0, samples: 1 }),
+      body: JSON.stringify({ mode: 'text', holes: board, score: 0, samples: 1 }),
     });
     assert.equal(response.status, 200);
     const result = await response.json();
@@ -72,7 +72,22 @@ test('optional Qwen Metal backend proxies chat completions separately', async ()
   }
 });
 
-test('local server checks health and proxies a decision to the structured port', async () => {
+test('Qwen Metal is configured on loopback by default', async () => {
+  const server = createAppServer({
+    fetchImpl: async () => new Response('{}', { status: 200 }),
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const status = await (await fetch(`http://127.0.0.1:${server.address().port}/api/status`)).json();
+    assert.equal(status.metalConfigured, true);
+    assert.equal(status.metalEndpoint, '127.0.0.1:8012');
+    assert.equal(status.metalModel, 'qwen35-metal');
+  } finally {
+    server.close();
+  }
+});
+
+test('optional Jev backend checks health and proxies a structured decision', async () => {
   let observed;
   const server = createAppServer({
     baseUrl: 'http://192.0.2.10:8011',
@@ -99,7 +114,7 @@ test('local server checks health and proxies a decision to the structured port',
     assert.equal(status.endpoint, '192.0.2.10:8011');
     const response = await fetch(`${address}/api/decide`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ holes: board, score: 4, samples: 4 }),
+      body: JSON.stringify({ backend: 'jev', holes: board, score: 4, samples: 4 }),
     });
     assert.equal(response.status, 200);
     const result = await response.json();
@@ -113,7 +128,7 @@ test('local server checks health and proxies a decision to the structured port',
     assert.equal(JSON.parse(observed.options.body).samples, 4);
     const imageResponse = await fetch(`${address}/api/decide`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'image', image, score: 0, samples: 1 }),
+      body: JSON.stringify({ backend: 'jev', mode: 'image', image, score: 0, samples: 1 }),
     });
     assert.equal(imageResponse.status, 200);
     const forwarded = JSON.parse(observed.options.body);

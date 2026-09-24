@@ -128,8 +128,8 @@ export function createAppServer({
   fetchImpl = fetch,
   baseUrl = process.env.JEV_BASE_URL || 'http://127.0.0.1:8011',
   key = process.env.JEV_API_KEY || '',
-  metalUrl = process.env.METAL_BASE_URL || '',
-  metalModel = process.env.METAL_MODEL || 'Qwen/Qwen3.5-0.8B',
+  metalUrl = process.env.METAL_BASE_URL || 'http://127.0.0.1:8012',
+  metalModel = process.env.METAL_MODEL || 'qwen35-metal',
   metalKey = process.env.METAL_API_KEY || '',
 } = {}) {
   const decisionUrl = new URL('/v1/systemone', baseUrl).toString();
@@ -144,22 +144,16 @@ export function createAppServer({
         return json(res, 415, { error: 'JSON content type required.' });
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
-        let connected = false;
-        let metalConnected = false;
-        try {
-          const response = await fetchImpl(healthUrl, { signal: AbortSignal.timeout(2_000) });
-          connected = response.ok;
-        } catch {
-          connected = false;
-        }
-        if (metalHealthUrl) {
+        const checkHealth = async (target) => {
+          if (!target) return false;
           try {
-            const response = await fetchImpl(metalHealthUrl, { signal: AbortSignal.timeout(2_000) });
-            metalConnected = response.ok;
+            const response = await fetchImpl(target, { signal: AbortSignal.timeout(2_000) });
+            return response.ok;
           } catch {
-            metalConnected = false;
+            return false;
           }
-        }
+        };
+        const [connected, metalConnected] = await Promise.all([checkHealth(healthUrl), checkHealth(metalHealthUrl)]);
         return json(res, 200, {
           connected, model, endpoint,
           metalConfigured: Boolean(metalDecisionUrl), metalConnected,
@@ -169,7 +163,7 @@ export function createAppServer({
 
       if (req.method === 'POST' && url.pathname === '/api/decide') {
         const input = await readJson(req);
-        const backend = input.backend || 'jev';
+        const backend = input.backend || 'metal';
         if (backend === 'metal') {
           if (!metalDecisionUrl) return json(res, 503, { error: 'Qwen Metal backend is not configured.' });
           const payload = makeMetalRequest(input, metalModel);
