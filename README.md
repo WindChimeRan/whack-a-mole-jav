@@ -41,6 +41,20 @@ Both arms used seed `42`, one noise draw, 250 ms between spawns, 350 ms mole lif
 
 This is one round per arm. In image mode the average browser round trip exceeded the 350 ms lifetime, so the score gap under this pressure mostly measures whether an action can arrive in time. It does not isolate visual recognition accuracy.
 
+### Image-mode boundary sweep — September 23, 2026
+
+These are single 30-second image rounds with seed `42`, one noise draw, and at most three visible moles. The two 600 ms-spawn rows had the **same 50/50 spawn plan** and checksum `436c1b95`; only mole lifetime changed. The two 1,000 ms-spawn rows had the **same 30/30 spawn plan** and checksum `6ffa19eb`. The **Image boundary preset** button loads the 600 / 1,100 ms profile.
+
+| Spawn / stay | Score / possible | Hits | Escaped | Stale | Hit rate | DGX decision | Round trip |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 250 / 350 ms | 8 / 139 | 6 | 98 | 53 | 6% | 341 ms | 397 ms |
+| 600 / 700 ms | 18 / 50 | 20 | 21 | 30 | 49% | 297 ms | 351 ms |
+| 600 / 1,100 ms | 28 / 50 | 30 | 10 | 19 | 75% | 293 ms | 340 ms |
+| 1,000 / 1,500 ms | 13 / 28 | 19 | 5 | 8 | 79% | 203 ms | 296 ms |
+| 1,000 / 1,900 ms | 13 / 28 | 19 | 5 | 10 | 79% | 230 ms | 304 ms |
+
+On the identical 600 ms spawn plan, the observed score rose from 18 to 28 when the lifetime increased from 700 to 1,100 ms. On the identical 1,000 ms spawn plan, extending the lifetime from 1,500 to 1,900 ms left the score at 13. That plan had only two gold moles, so a score of 13 despite 19 positive hits implies at least three bomb hits. The remaining limit includes action selection or changes in the scene while the request is in flight; these runs do not isolate visual recognition accuracy. The scores are single-run observations, and the 1,000 ms rows have a different spawn plan, so their raw scores are not directly comparable with the 600 ms rows.
+
 ## Notes
 
 The browser game is an adaptation of the MIT-licensed [TypeScript Mini Games Whack-a-Mole](https://github.com/gerardrbentley/typescript-mini-games/tree/f699ae39ef755b156daaa7310091ccaf93a3bbbe/whack-a-mole) by Gerard Bentley. Its license is included in [ORIGINAL_LICENSE.txt](./ORIGINAL_LICENSE.txt). This version adds a local API server, model decision loop, pressure controls, multiple targets, and live telemetry.

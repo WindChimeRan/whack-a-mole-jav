@@ -268,6 +268,7 @@ function render() {
   $('imageInput').disabled = ['running', 'paused'].includes(game.phase);
   $('lengthSelect').disabled = ['running', 'paused'].includes(game.phase);
   $('seedInput').disabled = ['running', 'paused'].includes(game.phase);
+  $('imagePreset').disabled = ['running', 'paused'].includes(game.phase);
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
   $('demoMode').classList.toggle('selected', game.mode === 'demo');
   $('textInput').classList.toggle('selected', !imageMode);
@@ -558,6 +559,20 @@ $('seedInput').addEventListener('change', (event_) => {
   } else {
     event_.target.value = settings.seed;
   }
+});
+$('imagePreset').addEventListener('click', () => {
+  Object.assign(settings, { spawnMs: 600, lifeMs: 1100, maxActive: 3, durationSec: 30, samples: 1, seed: 42 });
+  game.mode = 'jev';
+  game.inputMode = 'image';
+  $('spawnSlider').value = settings.spawnMs;
+  $('lifeSlider').value = settings.lifeMs;
+  $('crowdSelect').value = settings.maxActive;
+  $('samplesSelect').value = settings.samples;
+  $('lengthSelect').value = settings.durationSec;
+  $('seedInput').value = settings.seed;
+  $('spawnValue').textContent = formatSeconds(settings.spawnMs);
+  $('lifeValue').textContent = formatSeconds(settings.lifeMs);
+  resetGame();
 });
 $('jevMode').addEventListener('click', () => { game.mode = 'jev'; render(); });
 $('demoMode').addEventListener('click', () => { game.mode = 'demo'; render(); });
