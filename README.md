@@ -22,6 +22,25 @@ The telemetry separates three timings: **DGX decision** comes from the structure
 
 The game checks spawns and expirations every 10 ms while refreshing the visible clock and image life bars every 100 ms. It checks expiry again as a model response arrives, before scoring the action. The image board caches its static background and draws only active occupants for each frame. Select the input mode before starting a round, so each round's metrics belong to one mode.
 
+For a paired text/image comparison, keep mole frequency, lifetime, visible limit, round length, noise draws, and **round seed** the same. The seed produces the same planned hole and occupant sequence independently of the model's actions. The telemetry shows accepted/planned spawns and a plan checksum; compare both after each round. With 250 ms spawns, 350 ms lifetime, and a limit of three visible, planned spawns do not compete for the same hole in adjacent events.
+
+### Matched stress run — September 23, 2026
+
+Both arms used seed `42`, one noise draw, 250 ms between spawns, 350 ms mole lifetime, at most three visible, and a 30-second round. Each received **119/119** planned spawns with checksum `2da46b37`. The plan contained 88 regular moles, 17 gold moles, and 14 bombs; an error-free player could score 139 points.
+
+| Metric | Text state | Board image |
+| --- | ---: | ---: |
+| Score | **131** | **8** |
+| Hits | 97 | 6 |
+| Escaped | 7 | 98 |
+| Stale choices | 7 | 53 |
+| DGX decision time, average | 123 ms | 341 ms |
+| App preparation, average | <0.1 ms | 3.2 ms |
+| Browser round trip, average | 149 ms | 397 ms |
+| Decisions sent | 133 | 63 |
+
+This is one round per arm. In image mode the average browser round trip exceeded the 350 ms lifetime, so the score gap under this pressure mostly measures whether an action can arrive in time. It does not isolate visual recognition accuracy.
+
 ## Notes
 
 The browser game is an adaptation of the MIT-licensed [TypeScript Mini Games Whack-a-Mole](https://github.com/gerardrbentley/typescript-mini-games/tree/f699ae39ef755b156daaa7310091ccaf93a3bbbe/whack-a-mole) by Gerard Bentley. Its license is included in [ORIGINAL_LICENSE.txt](./ORIGINAL_LICENSE.txt). This version adds a local API server, model decision loop, pressure controls, multiple targets, and live telemetry.

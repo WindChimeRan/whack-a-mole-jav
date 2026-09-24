@@ -10,7 +10,18 @@ const canvasColumns = [100, 300, 500];
 const canvasRows = [86, 225, 364];
 const kinds = { mole: { points: 1, label: 'mole' }, gold: { points: 3, label: 'gold mole' }, bomb: { points: -2, label: 'bomb' } };
 
-const settings = { spawnMs: 1200, lifeMs: 1700, maxActive: 2, durationSec: 45, samples: 1 };
+const settings = { spawnMs: 1200, lifeMs: 1700, maxActive: 2, durationSec: 45, samples: 1, seed: 42 };
+
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value + 0x6d2b79f5) >>> 0;
+    let mixed = Math.imul(value ^ (value >>> 15), value | 1);
+    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const game = {
   phase: 'idle', mode: 'jev', inputMode: 'text', holes: Array(9).fill(null), score: 0,
   hits: 0, missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
@@ -18,6 +29,8 @@ const game = {
   startedAt: 0, elapsedMs: 0, pausedAt: 0,
   nextSpawnAt: 0, nextDecisionAt: 0, pending: false, runId: 0,
   controller: null, boardVersion: 0, lastDecisionVersion: 0,
+  seed: settings.seed, rng: seededRandom(settings.seed), lastPlanIndex: -1,
+  spawnAttempts: 0, spawned: 0, scheduleHash: 2166136261,
 };
 let connected = false;
 let actualModel = 'dgemma';
@@ -214,6 +227,7 @@ function render() {
   $('latencyStat').textContent = averageMs(game.timing.modelTotal, game.timing.modelCount);
   $('prepStat').textContent = averageMs(game.timing.prepTotal, game.timing.count);
   $('roundtripStat').textContent = averageMs(game.timing.tripTotal, game.timing.count);
+  $('scheduleStat').textContent = `Seed ${game.seed} · ${game.spawned}/${game.spawnAttempts} spawns · plan ${game.scheduleHash.toString(16).padStart(8, '0')}`;
   $('latencyLabel').textContent = game.mode === 'demo' ? 'DEMO DELAY' : 'DGX DECISION';
   $('chartTitle').textContent = game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'DGX DECISION TIME';
   $('hitRateStat').textContent = game.hits + game.missed
@@ -253,6 +267,7 @@ function render() {
   $('textInput').disabled = ['running', 'paused'].includes(game.phase);
   $('imageInput').disabled = ['running', 'paused'].includes(game.phase);
   $('lengthSelect').disabled = ['running', 'paused'].includes(game.phase);
+  $('seedInput').disabled = ['running', 'paused'].includes(game.phase);
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
   $('demoMode').classList.toggle('selected', game.mode === 'demo');
   $('textInput').classList.toggle('selected', !imageMode);
@@ -281,6 +296,8 @@ function resetGame() {
     latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
     startedAt: 0, elapsedMs: 0, pausedAt: 0,
     nextSpawnAt: 0, nextDecisionAt: 0, boardVersion: 0, lastDecisionVersion: 0,
+    seed: settings.seed, rng: seededRandom(settings.seed), lastPlanIndex: -1,
+    spawnAttempts: 0, spawned: 0, scheduleHash: 2166136261,
   });
   document.querySelectorAll('.hammer-action,.impact-popup').forEach((element) => element.remove());
   $('eventFeed').innerHTML = '<li class="feed-empty">The action starts when you launch a round.</li>';
@@ -307,8 +324,8 @@ async function startGame() {
   resetGame();
   game.phase = 'running';
   game.startedAt = Date.now();
-  game.nextSpawnAt = Date.now() + 200;
-  event(`${game.mode === 'jev' ? `DiffusionGemma · ${game.inputMode}` : 'Demo bot'} entered the arena`, 'START');
+  game.nextSpawnAt = Date.now() + 250;
+  event(`${game.mode === 'jev' ? `DiffusionGemma · ${game.inputMode}` : 'Demo bot'} · seed ${game.seed}`, 'START');
   render();
 }
 
@@ -333,14 +350,20 @@ function endGame() {
 }
 
 function spawnMole(now) {
-  const active = game.holes.filter(Boolean).length;
-  if (active >= settings.maxActive) return;
-  const free = game.holes.flatMap((hole, index) => hole ? [] : [index]);
-  if (!free.length) return;
-  const index = free[Math.floor(Math.random() * free.length)];
-  const roll = Math.random();
+  let index = Math.floor(game.rng() * 9);
+  const roll = game.rng();
+  if (index === game.lastPlanIndex) index = (index + 1) % 9;
+  game.lastPlanIndex = index;
   const kind = roll < .11 ? 'bomb' : roll < .29 ? 'gold' : 'mole';
+  const kindCode = kind === 'mole' ? 1 : kind === 'gold' ? 2 : 3;
+  game.spawnAttempts++;
+  game.scheduleHash = Math.imul(game.scheduleHash ^ (((index + 1) << 2) | kindCode), 16777619) >>> 0;
+  const active = game.holes.filter(Boolean).length;
+  if (active >= settings.maxActive || game.holes[index]) {
+    return;
+  }
   game.holes[index] = { kind, expiresAt: now + settings.lifeMs, lifeMs: settings.lifeMs };
+  game.spawned++;
   game.boardVersion++;
 }
 
@@ -527,6 +550,14 @@ $('samplesSelect').addEventListener('change', (event_) => {
 $('lengthSelect').addEventListener('change', (event_) => {
   settings.durationSec = Number(event_.target.value);
   render();
+});
+$('seedInput').addEventListener('change', (event_) => {
+  const seed = Number(event_.target.value);
+  if (Number.isInteger(seed) && seed >= 0 && seed <= 2147483647) {
+    settings.seed = seed;
+  } else {
+    event_.target.value = settings.seed;
+  }
 });
 $('jevMode').addEventListener('click', () => { game.mode = 'jev'; render(); });
 $('demoMode').addEventListener('click', () => { game.mode = 'demo'; render(); });
