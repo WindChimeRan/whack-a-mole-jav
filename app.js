@@ -1,4 +1,4 @@
-import { createMetalRequest, parseMetalChoice } from './metal-client.js';
+import { createMetalRequest, metalImagePrompt, parseMetalChoice } from './metal-client.js';
 import { defaultModelId, legacyModelAlias, modelIdForInput, parseJevBaseUrl, parseModelBaseUrl } from './model-connection.js';
 import { defaultJevModel, makeJevRequest, parseJevDecision } from './jev-client.js';
 
@@ -81,6 +81,7 @@ let metalEndpoint = metalConnection.endpoint;
 $('modelBaseUrl').value = metalConnection.baseUrl;
 $('modelId').value = modelIdForInput(metalModelName);
 $('jevBaseUrl').value = jevConnection.baseUrl;
+$('imagePrompt').textContent = metalImagePrompt;
 
 function playerName() {
   return { metal: 'Local model', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];

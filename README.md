@@ -1,6 +1,6 @@
-# Mole Lab
+# Mole Lab: Whack-a-Mole for local models
 
-**Can a local model keep up?** Watch a model play whack-a-mole, tune the pace, then try the same round yourself. The browser shows each choice, hammer strike, score change, escaped mole, and response time. Qwen3.5-0.8B on vLLM-metal is the default model; the DGX Spark Jev-style player is optional.
+**Can a local model keep up?** Whack-a-Mole rewards fast, accurate choices. Larger models may choose better but answer too late; smaller models may answer sooner and miss. Live image input puts multimodal latency on the clock, with Text as a baseline. Play the same seeded round yourself.
 
 <p align="center"><img src="docs/qwen-metal-demo.gif" alt="Desktop replay of Qwen playing a live image-input round" width="960"></p>
 

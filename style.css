@@ -95,3 +95,18 @@
 .outcome-track i{display:block;width:0;height:100%;border-radius:10px;transition:width .25s ease}
 .outcome-row.mole i{background:#bf886d}.outcome-row.gold i{background:#efc85f}.outcome-row.miss i{background:#d58070}.outcome-row.bomb i{background:#7a8580}.outcome-row.wait i{background:#a5c69d}
 @media(max-width:700px){.setup-callout{display:block;margin-top:12px}.setup-callout a{display:inline-block;margin-top:8px}.outcome-header{display:block}.outcome-header small{display:block;text-align:left;margin-top:6px}.outcome-row{grid-template-columns:77px minmax(0,1fr) 28px;gap:8px}}
+.hero-highlight{margin:9px 0 0;color:#bfd1ba;font-size:11px;line-height:1.45}
+.hero-highlight strong{color:#eac676;font-size:10px;letter-spacing:.1em;margin-right:6px}
+.prompt-panel{margin-top:18px;padding:25px;background:#1c2a25;border:1px solid #34463b;border-radius:20px}
+.prompt-heading{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}
+.prompt-heading h2{font-size:27px;line-height:1.1;letter-spacing:-.04em;margin:7px 0 0}
+.prompt-heading p:last-child{max-width:410px;margin:0;color:#a4b7a6;font-size:12px;line-height:1.45}
+.prompt-heading code,.prompt-block code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f5d288}
+.prompt-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.7fr);gap:16px}
+.prompt-block{min-width:0;padding:19px;background:#24372a;border:1px solid #425c45;border-radius:14px}
+.prompt-block>span{color:#f4c66d;font-size:10px;font-weight:850;letter-spacing:.13em}
+.prompt-block pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:11px 0 0;padding:15px;background:#0e1d18;border:1px solid #405845;border-radius:9px;color:#e8f1db;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+.prompt-block:last-child pre{font-size:26px;line-height:1.1;color:#f4d078}
+.prompt-block small{display:block;margin-top:11px;color:#a4b7a6;font-size:11px;line-height:1.4}
+@media(max-width:800px){.prompt-heading{display:block}.prompt-heading p:last-child{margin-top:11px}.prompt-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.prompt-panel{padding:17px}.prompt-heading h2{font-size:24px}}
