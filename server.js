@@ -95,7 +95,7 @@ export function makeJevRequest({ mode = 'text', holes, image, score, samples = 1
 }
 
 export function makeMetalRequest(input, metalModel) {
-  makeJevRequest(input); // Share the same bounded game-state validation.
+  const jevRequest = makeJevRequest(input); // Share validation and the exact action labels.
   const occupied = input.mode === 'text' ? input.holes.flatMap((hole, index) => hole
     ? [`Hole ${index + 1}: ${hole.kind === 'gold' ? 'gold mole' : hole.kind === 'mole' ? 'brown mole' : 'bomb'} (${Math.round(hole.msLeft)} ms left).`]
     : []) : [];
@@ -109,6 +109,7 @@ export function makeMetalRequest(input, metalModel) {
     model: metalModel,
     temperature: 0,
     max_tokens: 16,
+    structured_outputs: { choice: Object.keys(jevRequest.questions.action.criteria) },
     messages: [
       { role: 'user', content: userContent },
     ],

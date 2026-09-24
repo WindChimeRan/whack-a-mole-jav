@@ -37,7 +37,7 @@ METAL_BASE_URL=http://127.0.0.1:8012
 METAL_MODEL=qwen35-metal
 ```
 
-Start or restart `npm start`, then choose **Qwen Metal** and **Text** or **Image** on the first screen. This path uses `POST /v1/chat/completions` with one requested label (`h1`–`h9` or `wait`); it does not require the Jev-style endpoint. If the Qwen server is on another host, use that host in `METAL_BASE_URL`. `METAL_API_KEY` is available for servers requiring a bearer token. The optional button is disabled until `METAL_BASE_URL` is configured. Both input paths were smoke tested on vLLM-metal 0.29.0; action quality is experimental.
+Start or restart `npm start`, then choose **Qwen Metal** and **Text** or **Image** on the first screen. This path uses `POST /v1/chat/completions` with vLLM's `structured_outputs.choice`, constrained to the same ten action labels as Local Jev (`h1`–`h9` or `wait`). It does not use Jev's `/v1/systemone` question format or provide Jev's confidence and probability fields. If the Qwen server is on another host, use that host in `METAL_BASE_URL`. `METAL_API_KEY` is available for servers requiring a bearer token. The optional button is disabled until `METAL_BASE_URL` is configured. Both input paths were smoke tested on vLLM-metal 0.29.0; action quality is experimental.
 
 ## How it works
 

@@ -26,6 +26,7 @@ test('image request carries board pixels without the text occupancy list', () =>
 test('Qwen Metal requests keep image observations visual and parse bounded labels', () => {
   const textRequest = makeMetalRequest({ mode: 'text', holes: board, score: 4, samples: 1 }, 'qwen35-metal');
   assert.match(textRequest.messages[0].content, /Hole 2: gold mole \(430 ms left\)/);
+  assert.deepEqual(textRequest.structured_outputs.choice, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8', 'h9', 'wait']);
   const imageRequest = makeMetalRequest({ mode: 'image', image, score: 4, samples: 1 }, 'qwen35-metal');
   assert.equal(imageRequest.messages[0].content[1].image_url.url, image);
   assert.equal(JSON.stringify(imageRequest).includes('gold mole (430'), false);
@@ -64,6 +65,8 @@ test('optional Qwen Metal backend proxies chat completions separately', async ()
     assert.equal(result.choice, 'h2');
     assert.equal(result.timingSource, 'local_proxy_round_trip');
     assert.equal(observed.url, 'http://127.0.0.1:8012/v1/chat/completions');
+    assert.deepEqual(JSON.parse(observed.options.body).structured_outputs.choice,
+      ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8', 'h9', 'wait']);
   } finally {
     server.close();
   }
