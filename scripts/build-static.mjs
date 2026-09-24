@@ -6,7 +6,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const output = join(root, 'dist');
 await rm(output, { recursive: true, force: true });
 await mkdir(output);
-for (const name of ['index.html', 'app.js', 'metal-client.js', 'style.css']) {
+for (const name of ['index.html', 'app.js', 'metal-client.js', 'model-connection.js', 'style.css']) {
   await copyFile(join(root, name), join(output, name));
 }
 console.log(`Static site ready in ${output}`);

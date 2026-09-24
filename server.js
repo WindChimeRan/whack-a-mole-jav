@@ -14,6 +14,7 @@ const assets = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/metal-client.js': ['metal-client.js', 'text/javascript; charset=utf-8'],
+  '/model-connection.js': ['model-connection.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
 };
 
@@ -218,7 +219,7 @@ export function createAppServer({
           'Content-Type': asset[1],
           'Cache-Control': 'no-store',
           'X-Content-Type-Options': 'nosniff',
-          'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'",
+          'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src http: https:; img-src 'self' data:; object-src 'none'; base-uri 'none'",
         });
         return res.end(data);
       }

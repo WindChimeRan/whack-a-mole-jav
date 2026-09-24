@@ -19,18 +19,28 @@
       <div>
         <p class="eyebrow">LIVE REACTION TEST</p>
         <h1>Can a local model<br><em>keep up?</em></h1>
-        <p class="intro-copy">Watch Qwen on vLLM-metal, try the DGX Spark player, or play the same round yourself.</p>
+        <p class="intro-copy">Watch a local model, try the DGX Spark player, or play the same round yourself.</p>
       </div>
       <div class="connection-card">
-        <div class="connection-heading"><span id="connectionDot" class="connection-dot"></span><span id="connectionLabel">Checking Qwen Metal…</span><button id="checkConnection" class="change-key" type="button">Recheck</button></div>
+        <div class="connection-heading"><span id="connectionDot" class="connection-dot"></span><span id="connectionLabel">Checking model server…</span><button id="checkConnection" class="change-key" type="button">Recheck</button></div>
         <p class="microcopy">Decision API: <span id="connectionAddress">localhost:8012 /v1/chat/completions</span></p>
+        <details id="modelSettings" class="model-settings">
+          <summary>Change model or server</summary>
+          <div class="model-settings-fields">
+            <label for="modelBaseUrl">MODEL BASE URL</label><input id="modelBaseUrl" type="text" value="http://127.0.0.1:8012" spellcheck="false" autocapitalize="off">
+            <label for="modelId">MODEL ID</label><input id="modelId" type="text" value="qwen35-metal" list="modelSuggestions" spellcheck="false" autocapitalize="off"><datalist id="modelSuggestions"></datalist>
+            <label for="modelApiKey">BEARER KEY <span>(OPTIONAL, THIS TAB ONLY)</span></label><input id="modelApiKey" type="password" autocomplete="off">
+            <div class="model-settings-actions"><button id="applyModelSettings" type="button">Apply and connect</button><button id="resetModelSettings" type="button">Reset defaults</button></div>
+            <small id="modelSettingsHint">The URL and model ID are saved in this browser. The key is not saved.</small>
+          </div>
+        </details>
       </div>
     </section>
 
     <section class="quick-card" aria-label="Play and replay controls">
       <div class="quick-play"><span class="control-label">WATCH THE ROUND</span><div class="quick-buttons"><button id="startButton" class="primary-button" type="button">Start image round <span>↗</span></button><button id="pauseButton" class="secondary-button" type="button" disabled>Pause</button><button id="resetButton" class="secondary-button" type="button">Reset</button></div></div>
       <div class="quick-result"><span class="control-label">LIVE RESULT</span><strong id="quickScore">Ready</strong><small id="quickDetail">Image input · seed 42 · 30 seconds</small></div>
-      <div class="quick-input"><span class="control-label">PLAYER</span><div class="segmented backend-options"><button id="metalMode" class="selected" type="button">Qwen Metal</button><button id="humanMode" type="button">Human</button><button id="jevMode" type="button">Local Jev</button><button id="demoMode" type="button">Demo</button></div><small id="playerNote">Checking Qwen3.5-0.8B on vLLM-metal…</small><span id="inputLabel" class="control-label input-label">MODEL INPUT</span><div class="segmented"><button id="imageInput" class="selected" type="button">Image</button><button id="textInput" type="button">Text</button></div><button id="imagePreset" class="preset-button" type="button">Load image test preset<span>0.6 s spawn · 1.1 s stay · seed 42</span></button><small id="inputNote">The model sees the board pixels.</small></div>
+      <div class="quick-input"><span class="control-label">PLAYER</span><div class="segmented backend-options"><button id="metalMode" class="selected" type="button">Local model</button><button id="humanMode" type="button">Human</button><button id="jevMode" type="button">Local Jev</button><button id="demoMode" type="button">Demo</button></div><small id="playerNote">Checking qwen35-metal on vLLM-metal…</small><span id="inputLabel" class="control-label input-label">MODEL INPUT</span><div class="segmented"><button id="imageInput" class="selected" type="button">Image</button><button id="textInput" type="button">Text</button></div><button id="imagePreset" class="preset-button" type="button">Load image test preset<span>0.6 s spawn · 1.1 s stay · seed 42</span></button><small id="inputNote">The model sees the board pixels.</small></div>
     </section>
 
     <main class="arena-layout">
@@ -59,13 +69,14 @@
 
       <aside class="telemetry">
         <section class="stat-card">
-          <div class="card-topline"><div><span class="section-number">02 /</span> LIVE TELEMETRY</div><span id="agentBadge" class="agent-badge">QWEN METAL · IMAGE</span></div>
-          <div class="stat-grid"><div><span>HITS</span><strong id="hitStat">0</strong></div><div><span>ESCAPED</span><strong id="missStat">0</strong></div><div><span id="staleLabel">STALE CALLS</span><strong id="staleStat">0</strong></div><div><span id="latencyLabel">METAL REQUEST</span><strong id="latencyStat">—</strong></div><div><span id="prepLabel">APP PREP</span><strong id="prepStat">—</strong></div><div><span id="roundtripLabel">ROUND TRIP</span><strong id="roundtripStat">—</strong></div></div>
+          <div class="card-topline"><div><span class="section-number">02 /</span> LIVE TELEMETRY</div><span id="agentBadge" class="agent-badge">LOCAL MODEL · IMAGE</span></div>
+          <div class="stat-grid"><div><span>HITS</span><strong id="hitStat">0</strong></div><div><span>ESCAPED</span><strong id="missStat">0</strong></div><div><span id="staleLabel">EMPTY HITS</span><strong id="staleStat">0</strong></div><div><span id="latencyLabel">MODEL REQUEST</span><strong id="latencyStat">—</strong></div><div><span id="prepLabel">APP PREP</span><strong id="prepStat">—</strong></div><div><span id="roundtripLabel">ROUND TRIP</span><strong id="roundtripStat">—</strong></div></div>
           <p id="timingNote" class="timing-note">Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.</p>
+          <p id="choiceDiagnosis" class="timing-note" hidden></p>
           <p id="scheduleStat" class="timing-note">Seed 42 · 0/0 spawns · plan 811c9dc5</p>
           <div class="throughput-row"><span id="decisionLabel">DECISIONS SENT</span><strong id="decisionStat">0</strong><span id="hitRateLabel">HIT RATE</span><strong id="hitRateStat">—</strong></div>
         </section>
-        <section class="latency-card"><div class="card-topline"><div><span class="section-number">03 /</span> <span id="chartTitle">MODEL DECISION TIME</span></div><span>LAST 20 CALLS</span></div><div id="latencyBars" class="latency-bars" aria-label="Recent model decision times"></div><div class="chart-axis"><span>0 ms</span><span>500 ms</span><span>1000+ ms</span></div></section>
+        <section class="latency-card"><div class="card-topline"><div><span class="section-number">03 /</span> <span id="chartTitle">MODEL REQUEST TIME</span></div><span>LAST 20 CALLS</span></div><div id="latencyBars" class="latency-bars" aria-label="Recent model decision times"></div><div class="chart-axis"><span>0 ms</span><span>500 ms</span><span>1000+ ms</span></div></section>
         <section class="feed-card"><div class="card-topline"><div><span class="section-number">04 /</span> PLAY BY PLAY</div><span id="feedCount">0 EVENTS</span></div><ol id="eventFeed" class="event-feed"><li class="feed-empty">The action starts when you launch a round.</li></ol></section>
       </aside>
     </main>
@@ -79,7 +90,7 @@
       </div>
       <div class="control-footer"><p id="controlHint">Checking your Qwen Metal server…</p></div>
     </section>
-    <footer><span>MOLE LAB / LIVE DECISION GAME</span><span>Qwen Metal · Human · Local Jev · Demo</span></footer>
+    <footer><span>MOLE LAB / LIVE DECISION GAME</span><span>Local model · Human · Local Jev · Demo</span></footer>
   </div>
 </body>
 </html>

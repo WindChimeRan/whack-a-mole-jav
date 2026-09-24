@@ -6,7 +6,7 @@ export function createMetalRequest(input, metalModel) {
     : []) : [];
   const userContent = input.mode === 'image'
     ? [
-      { type: 'text', text: 'Which numbered hole contains a visible brown or gold mole face? Ignore score popups and hammers. Reply only h1..h9 or wait.' },
+      { type: 'text', text: 'Reply with the number printed closest to a visible brown or gold mole face, as h1 through h9. If the board has no visible mole face, reply wait.' },
       { type: 'image_url', image_url: { url: input.image } },
     ]
     : `${occupied.length ? `${occupied.join(' ')} Other holes: empty.` : 'All holes are empty.'} Which numbered hole contains a brown or gold mole? Prefer gold. Reply with just the number, or wait if none.`;

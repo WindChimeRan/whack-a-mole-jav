@@ -1,23 +1,27 @@
 # Benchmark notes
 
-These are single-round observations from September 23, 2026 on a local DiffusionGemma Jev-style server. They are useful for reproducing behavior and locating latency boundaries, not statistical accuracy estimates.
+These are single-round observations on local model servers. They help reproduce behavior and locate latency boundaries; they are not statistical accuracy estimates.
+
+Rows recorded before the empty-hit breakdown used **stale** for any empty hole at action arrival. That included wrong choices on holes already empty in the input. The current game separates those from targets that expired in flight.
 
 ## Optional Qwen3.5-0.8B on vLLM-metal
 
-On September 24, 2026, both paths ran against Qwen3.5-0.8B on vLLM-metal 0.29.0 on a Mac with `structured_outputs.choice` constrained to `h1`–`h9` or `wait`. Both rounds used the default 600 ms spawn interval, 1,100 ms stay, seed `42`, at most three visible moles, and a 30-second clock. Each produced the same 50/50 spawn plan (`436c1b95`), with 50 possible points. The game sent complete board pixels for image mode and occupied holes with remaining lifetimes for text mode.
+On September 24, 2026, text and image paths ran against Qwen3.5-0.8B on vLLM-metal 0.29.0 on a Mac with `structured_outputs.choice` constrained to `h1`–`h9` or `wait`. Each round used a 600 ms spawn interval, 1,100 ms stay, seed `42`, at most three visible moles, and a 30-second clock. Each produced the same 50/50 spawn plan (`436c1b95`), with 50 possible points. The game sent complete board pixels for image mode and occupied holes with remaining lifetimes for text mode.
 
-| Metric | Qwen text | Qwen image |
-| --- | ---: | ---: |
-| Score | **34** | **30** |
-| Hits | 42 | 36 |
-| Escaped | 0 | 6 |
-| Stale choices | 0 | 50 |
-| Local proxy request, average | 60 ms | 93 ms |
-| App preparation, average | <0.1 ms | 2.9 ms |
-| Browser round trip, average | 63 ms | 96 ms |
-| Decisions sent | 100 | 93 |
+| Metric | Qwen text | Image, former prompt | Image, current prompt |
+| --- | ---: | ---: | ---: |
+| Score | **34** | **30** | **34** |
+| Hits | 42 | 36 | 42 |
+| Escaped | 0 | 6 | 0 |
+| Empty hits | 0 | 50 | 0 |
+| Local proxy request, average | 60 ms | 93 ms | 80 ms |
+| App preparation, average | <0.1 ms | 2.9 ms | 2.3 ms |
+| Browser round trip, average | 63 ms | 96 ms | 82 ms |
+| Decisions sent | 100 | 93 | 100 |
 
-The Qwen route uses `POST /v1/chat/completions` with a server-enforced choice list, so its request timing is measured at the local game proxy and includes inference; it is not the Jev endpoint's server-side timing. The choice list matches Jev's actions, but Qwen does not use Jev's `/v1/systemone` question semantics or return confidence and probabilities. These are one-round observations, not an accuracy estimate. Qwen sometimes selected bombs or empty holes, and the small model was sensitive to prompt wording. The shorter prompts used in these rounds were checked on known mole and bomb frames before replaying the game.
+The old image prompt often produced raw `h1` on empty frames. On 28 captured frames from one game sequence, it chose a valid target or `wait` on 8 frames; the current prompt did so on 21. Those frames are correlated, so this is a prompt diagnostic rather than an accuracy estimate. The new prompt also scored 34 in the matched full round. It can still choose a bomb.
+
+The Qwen route uses `POST /v1/chat/completions` with a server-enforced choice list, so its request timing is measured at the local game proxy and includes inference; it is not the Jev endpoint's server-side timing. The choice list matches Jev's actions, but Qwen does not use Jev's `/v1/systemone` question semantics or return confidence and probabilities.
 
 ## Matched text versus image stress run
 

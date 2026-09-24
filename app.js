@@ -1,8 +1,24 @@
 import { createMetalRequest, parseMetalChoice } from './metal-client.js';
+import { parseModelBaseUrl } from './model-connection.js';
 
 const $ = (id) => document.getElementById(id);
-const browserDirectModel = location.protocol === 'https:' || new URLSearchParams(location.search).get('direct') === '1';
-const localMetalUrl = 'http://127.0.0.1:8012';
+const hostedBrowserModel = location.protocol === 'https:' || new URLSearchParams(location.search).get('direct') === '1';
+const defaultModelBaseUrl = 'http://127.0.0.1:8012';
+const modelSettingsKey = 'moleLabModelConnection';
+const savedModelSettings = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(modelSettingsKey) || 'null');
+    if (typeof saved?.baseUrl === 'string' && typeof saved?.modelId === 'string') {
+      return { connection: parseModelBaseUrl(saved.baseUrl), modelId: saved.modelId.trim() };
+    }
+  } catch { /* Ignore invalid or unavailable browser storage. */ }
+  return null;
+})();
+let metalConnection = savedModelSettings?.connection || parseModelBaseUrl(defaultModelBaseUrl);
+let useDirectModel = hostedBrowserModel || Boolean(savedModelSettings);
+let metalApiKey = '';
+let modelConnectionIssue = '';
+let modelSettingsIssue = '';
 const holeElements = [...document.querySelectorAll('.hole')];
 const visionBoard = $('visionBoard');
 const visionContext = visionBoard.getContext('2d', { alpha: false });
@@ -28,7 +44,7 @@ function seededRandom(seed) {
 
 const game = {
   phase: 'idle', mode: 'metal', inputMode: 'image', holes: Array(9).fill(null), score: 0,
-  hits: 0, missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+  hits: 0, missed: 0, bombs: 0, stale: 0, emptyAtInput: 0, expiredInFlight: 0, decisions: 0, errors: 0,
   reactionMin: Infinity, reactionMax: 0,
   latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
   startedAt: 0, elapsedMs: 0, pausedAt: 0,
@@ -41,13 +57,17 @@ let connected = false;
 let metalConfigured = true;
 let metalConnected = false;
 let connectionChecked = false;
+let connectionCheckId = 0;
 let jevModelName = 'jev-latest';
-let metalModelName = 'qwen35-metal';
+let metalModelName = savedModelSettings?.modelId || 'qwen35-metal';
 let jevEndpoint = 'localhost:8011';
-let metalEndpoint = 'localhost:8012';
+let metalEndpoint = metalConnection.endpoint;
+
+$('modelBaseUrl').value = metalConnection.baseUrl;
+$('modelId').value = metalModelName;
 
 function playerName() {
-  return { metal: 'Qwen Metal', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];
+  return { metal: 'Local model', jev: 'Local Jev', human: 'You', demo: 'Demo bot' }[game.mode];
 }
 
 function formatSeconds(ms) {
@@ -247,34 +267,36 @@ function render() {
     ? game.reactionMax ? `${game.reactionMax} ms` : '—'
     : averageMs(game.timing.tripTotal, game.timing.count);
   $('scheduleStat').textContent = `Seed ${game.seed} · ${game.spawned}/${game.spawnAttempts} spawns · plan ${game.scheduleHash.toString(16).padStart(8, '0')}`;
-  $('staleLabel').textContent = game.mode === 'human' ? 'EMPTY SWINGS' : 'STALE CALLS';
-  $('latencyLabel').textContent = game.mode === 'human' ? 'REACTION' : game.mode === 'metal' ? 'METAL REQUEST' : game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
+  $('staleLabel').textContent = game.mode === 'human' ? 'EMPTY SWINGS' : 'EMPTY HITS';
+  $('latencyLabel').textContent = game.mode === 'human' ? 'REACTION' : game.mode === 'metal' ? 'MODEL REQUEST' : game.mode === 'demo' ? 'DEMO DELAY' : 'MODEL DECISION';
   $('prepLabel').textContent = game.mode === 'human' ? 'FASTEST HIT' : 'APP PREP';
   $('roundtripLabel').textContent = game.mode === 'human' ? 'SLOWEST HIT' : 'ROUND TRIP';
   $('decisionLabel').textContent = game.mode === 'human' ? 'SWINGS' : 'DECISIONS SENT';
   $('hitRateLabel').textContent = game.mode === 'human' ? 'CATCH RATE' : 'HIT RATE';
-  $('chartTitle').textContent = game.mode === 'human' ? 'HUMAN REACTION TIME' : game.mode === 'metal' ? 'METAL REQUEST TIME' : game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
+  $('chartTitle').textContent = game.mode === 'human' ? 'HUMAN REACTION TIME' : game.mode === 'metal' ? 'MODEL REQUEST TIME' : game.mode === 'demo' ? 'DEMO RESPONSE TIME' : 'MODEL DECISION TIME';
   $('timingNote').textContent = game.mode === 'human'
     ? 'Reaction time runs from a mole appearing to your click on an occupied hole. Empty swings have no reaction time.'
     : game.mode === 'metal'
-    ? browserDirectModel
-      ? 'Metal request time is measured in this browser, from the local API call through its response. App prep includes frame capture.'
-      : 'Metal request time is measured by the local proxy, including inference. App prep includes frame capture; round trip also includes browser transfer.'
+    ? useDirectModel
+      ? 'Model request time is measured in this browser through the response. App prep includes frame capture.'
+      : 'Model request time is measured by the local proxy, including inference. App prep includes frame capture; round trip also includes browser transfer.'
     : game.mode === 'demo' ? 'Demo delay is a local simulation. App prep and round trip are still measured.'
       : 'Decision time is server reported. App prep includes frame capture; round trip includes the local proxy and network.';
+  $('choiceDiagnosis').hidden = game.mode === 'human' || game.phase === 'idle';
+  $('choiceDiagnosis').textContent = `${game.emptyAtInput} already empty in the input · ${game.expiredInFlight} expired before the hit`;
   $('connectionLabel').textContent = game.mode === 'human' ? 'Human player is ready'
     : game.mode === 'demo' ? 'Demo bot is ready'
-    : !connectionChecked ? browserDirectModel ? 'Connect to your local model' : 'Checking model servers…'
+    : !connectionChecked ? useDirectModel ? 'Connect to your model server' : 'Checking model servers…'
     : game.mode === 'metal'
-    ? metalConnected ? 'Qwen Metal is ready' : 'Qwen Metal is offline'
+    ? metalConnected ? `${metalModelName} is ready` : modelConnectionIssue ? 'Model connection needs attention' : 'Model server is offline'
     : connected ? 'Local Jev is ready' : 'Local Jev is offline';
   $('connectionAddress').textContent = game.mode === 'human' ? 'Click a hole or press 1–9'
     : game.mode === 'demo' ? 'Runs in this browser'
     : game.mode === 'metal'
-    ? `${metalEndpoint} /v1/chat/completions`
+    ? metalEndpoint
     : `${jevEndpoint} /v1/systemone`;
   $('connectionDot').classList.toggle('connected', game.mode === 'human' || game.mode === 'demo' || (game.mode === 'metal' ? metalConnected : connected));
-  $('checkConnection').textContent = browserDirectModel && !metalConnected ? 'Connect' : 'Recheck';
+  $('checkConnection').textContent = useDirectModel && !metalConnected ? 'Connect' : 'Recheck';
   $('hitRateStat').textContent = game.hits + game.missed
     ? `${Math.round(game.hits / (game.hits + game.missed) * 100)}%`
     : '—';
@@ -304,7 +326,7 @@ function render() {
     idle: 'Hit start to release the moles', running: game.mode === 'human' ? 'Click a mole before it disappears' : game.pending ? `${playerName()} is choosing…` : 'Watch the next move',
     paused: 'Round paused', ended: 'Round complete — change the pressure and go again',
   }[game.phase];
-  $('agentBadge').textContent = game.mode === 'human' ? 'HUMAN PLAYER' : game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'QWEN METAL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
+  $('agentBadge').textContent = game.mode === 'human' ? 'HUMAN PLAYER' : game.mode === 'demo' ? 'DEMO BOT' : `${game.mode === 'metal' ? 'LOCAL MODEL' : 'LOCAL JEV'} · ${imageMode ? 'IMAGE' : 'TEXT'}`;
   $('modelName').textContent = game.mode === 'metal' ? metalModelName : game.mode === 'jev' ? jevModelName : game.mode === 'human' ? 'human player' : 'demo-bot';
   $('startButton').innerHTML = game.phase === 'paused' ? 'Resume round <span>↗</span>' : game.phase === 'running' ? 'Playing… <span>↗</span>' : game.phase === 'ended' ? 'Replay round <span>↗</span>' : `Start ${game.mode === 'human' ? 'human' : imageMode ? 'image' : 'text'} round <span>↗</span>`;
   $('quickScore').textContent = game.phase === 'idle' ? 'Ready' : `${game.score} ${Math.abs(game.score) === 1 ? 'point' : 'points'}`;
@@ -313,7 +335,7 @@ function render() {
     : `${game.hits} ${game.hits === 1 ? 'hit' : 'hits'} · ${game.missed} escaped · ${game.stale} ${game.mode === 'human' ? 'empty swings' : 'stale'}`;
   $('startButton').disabled = game.phase === 'running';
   $('pauseButton').disabled = game.phase !== 'running';
-  $('jevMode').disabled = ['running', 'paused'].includes(game.phase) || browserDirectModel;
+  $('jevMode').disabled = ['running', 'paused'].includes(game.phase) || hostedBrowserModel;
   $('metalMode').disabled = ['running', 'paused'].includes(game.phase) || !metalConfigured;
   $('humanMode').disabled = ['running', 'paused'].includes(game.phase);
   $('demoMode').disabled = ['running', 'paused'].includes(game.phase);
@@ -322,6 +344,9 @@ function render() {
   $('lengthSelect').disabled = ['running', 'paused'].includes(game.phase);
   $('seedInput').disabled = ['running', 'paused'].includes(game.phase);
   $('imagePreset').disabled = ['running', 'paused'].includes(game.phase);
+  for (const id of ['modelBaseUrl', 'modelId', 'modelApiKey', 'applyModelSettings', 'resetModelSettings']) {
+    $(id).disabled = ['running', 'paused'].includes(game.phase);
+  }
   $('jevMode').classList.toggle('selected', game.mode === 'jev');
   $('metalMode').classList.toggle('selected', game.mode === 'metal');
   $('humanMode').classList.toggle('selected', game.mode === 'human');
@@ -335,17 +360,18 @@ function render() {
       : 'Sends exact occupants and time remaining.';
   $('playerNote').textContent = game.mode === 'human' ? 'No model server needed. Use the same seed and pressure settings.'
     : game.mode === 'demo' ? 'Scripted local bot, for previewing the arena.'
-    : !connectionChecked ? browserDirectModel ? 'Run vLLM-metal locally, then click Connect.' : 'Checking model servers…'
+    : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect.' : 'Checking model servers…'
     : game.mode === 'jev' ? `DGX Spark Jev-style server: ${connected ? 'ready' : 'offline'}. Optional player.`
-      : `Qwen3.5-0.8B on vLLM-metal: ${metalConnected ? 'ready' : 'offline'}.`;
+      : modelConnectionIssue || `${metalModelName}: ${metalConnected ? 'ready' : 'offline'}.`;
+  $('modelSettingsHint').textContent = modelSettingsIssue || 'URL and model ID are saved in this browser. The key stays in this tab.';
   $('controlHint').textContent = game.mode === 'human'
     ? 'Click a hole or press 1–9. Use the same seed and pressure settings to compare your score.'
     : game.mode === 'demo'
     ? 'Demo bot makes local choices. Choose a model to test inference.'
-    : !connectionChecked ? browserDirectModel ? 'Run vLLM-metal on 127.0.0.1:8012, then click Connect or Start.' : 'Checking model servers…'
+    : !connectionChecked ? useDirectModel ? 'Set a vLLM-compatible server above, then click Connect or Start.' : 'Checking model servers…'
     : game.mode === 'metal'
-      ? metalConnected ? `Qwen Metal (${metalModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
-        : `Qwen Metal is offline. Start vLLM-metal, then ${browserDirectModel ? 'click Connect' : 'recheck the connection'}.`
+      ? metalConnected ? `${metalModelName} is ready with ${imageMode ? 'image' : 'text'} input.`
+        : modelConnectionIssue || `Model server is offline. Check ${metalConnection.baseUrl} and click Connect.`
       : connected ? `Local Jev (${jevModelName}) is ready with ${imageMode ? 'image' : 'text'} input.`
         : 'Local Jev is offline. Recheck the connection or use Demo bot.';
 }
@@ -361,7 +387,7 @@ function resetGame() {
   abortDecision();
   Object.assign(game, {
     phase: 'idle', holes: Array(9).fill(null), score: 0, hits: 0,
-    missed: 0, bombs: 0, stale: 0, decisions: 0, errors: 0,
+    missed: 0, bombs: 0, stale: 0, emptyAtInput: 0, expiredInFlight: 0, decisions: 0, errors: 0,
     reactionMin: Infinity, reactionMax: 0,
     latencies: [], timing: { modelTotal: 0, modelCount: 0, prepTotal: 0, tripTotal: 0, count: 0 },
     startedAt: 0, elapsedMs: 0, pausedAt: 0,
@@ -453,13 +479,21 @@ async function demoChoice(snapshot) {
   return { choice: targets.length ? `h${targets[0].index + 1}` : 'wait', confidence: 1, latencyMs: delay, model: 'demo-bot' };
 }
 
-function whack(index, timing = '', human = false) {
+function whack(index, timing = '', human = false, observedHole = null) {
   const target = game.holes[index];
   const label = `Hole ${index + 1}`;
   if (!target) {
     game.stale++;
     showImpact(index, 'MISS', 'miss');
-    event(`${label} was empty${human ? '' : ' on arrival'}`, human ? 'MISS' : timing, 'stale');
+    if (human) {
+      event(`${label} was empty`, 'MISS', 'stale');
+    } else if (observedHole) {
+      game.expiredInFlight++;
+      event(`${label} expired before the hit`, timing, 'stale');
+    } else {
+      game.emptyAtInput++;
+      event(`${label} was already empty in the input`, timing, 'stale');
+    }
     return;
   }
 
@@ -513,7 +547,7 @@ async function decide() {
     const request = game.inputMode === 'image'
       ? { backend: game.mode, mode: 'image', image: visionBoard.toDataURL('image/png'), score: game.score, samples: settings.samples }
       : { backend: game.mode, mode: 'text', holes: snapshot, score: game.score, samples: settings.samples };
-    body = JSON.stringify(browserDirectModel && game.mode === 'metal'
+    body = JSON.stringify(useDirectModel && game.mode === 'metal'
       ? createMetalRequest(request, metalModelName)
       : request);
   }
@@ -523,13 +557,16 @@ async function decide() {
     let resultPromise;
     if (game.mode === 'demo') {
       resultPromise = demoChoice(snapshot);
-    } else if (browserDirectModel && game.mode === 'metal') {
-      resultPromise = fetch(`${localMetalUrl}/v1/chat/completions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+    } else if (useDirectModel && game.mode === 'metal') {
+      resultPromise = fetch(metalConnection.completionUrl, {
+        method: 'POST', headers: {
+          'Content-Type': 'application/json',
+          ...(metalApiKey ? { Authorization: `Bearer ${metalApiKey}` } : {}),
+        },
         body, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8_000)]),
       }).then(async (response) => {
         const completion = await response.json();
-        if (!response.ok) throw new Error(`Local Qwen server returned HTTP ${response.status}`);
+        if (!response.ok) throw new Error(`Model returned HTTP ${response.status}${game.inputMode === 'image' ? '; check whether it accepts images' : ''}`);
         const choice = parseMetalChoice(completion?.choices?.[0]?.message?.content);
         return {
           choice: choice || 'wait', invalidOutput: !choice,
@@ -581,7 +618,7 @@ async function decide() {
       event('Chose to wait', timing);
       game.nextDecisionAt = Date.now() + 70;
     } else {
-      whack(index, timing);
+      whack(index, timing, false, snapshot[index]);
       game.nextDecisionAt = Date.now() + 70;
     }
   } catch (error) {
@@ -635,40 +672,117 @@ function tick() {
 }
 
 async function loadConnection() {
+  const checkId = ++connectionCheckId;
+  const activeConnection = metalConnection;
+  const activeKey = metalApiKey;
   connectionChecked = false;
+  modelConnectionIssue = '';
   render();
-  if (browserDirectModel) {
-    connected = false;
+  if (!hostedBrowserModel) {
     try {
-      const response = await fetch(`${localMetalUrl}/health`, { signal: AbortSignal.timeout(15_000) });
-      metalConnected = response.ok;
+      const response = await fetch('/api/status');
+      const status = await response.json();
+      if (checkId !== connectionCheckId) return;
+      connected = Boolean(status.connected);
+      jevModelName = status.model || jevModelName;
+      jevEndpoint = status.endpoint || jevEndpoint;
+      if (!useDirectModel) {
+        metalConfigured = Boolean(status.metalConfigured);
+        metalConnected = Boolean(status.metalConnected);
+        metalModelName = status.metalModel || metalModelName;
+        metalEndpoint = status.metalEndpoint ? `${status.metalEndpoint}/v1/chat/completions` : metalEndpoint;
+        $('modelId').value = metalModelName;
+      }
     } catch {
-      metalConnected = false;
+      if (checkId !== connectionCheckId) return;
+      connected = false;
+      if (!useDirectModel) metalConnected = false;
     }
-    connectionChecked = true;
-    render();
-    return;
   }
-  try {
-    const response = await fetch('/api/status');
-    const status = await response.json();
-    connected = status.connected;
-    jevModelName = status.model;
-    metalConfigured = Boolean(status.metalConfigured);
-    metalConnected = Boolean(status.metalConnected);
-    metalModelName = status.metalModel || metalModelName;
-    jevEndpoint = status.endpoint || jevEndpoint;
-    metalEndpoint = status.metalEndpoint || metalEndpoint;
-  } catch {
-    $('connectionLabel').textContent = 'Local server unavailable';
-    connected = false;
-    metalConnected = false;
+  if (useDirectModel) {
+    metalConfigured = true;
+    metalEndpoint = activeConnection.endpoint;
+    try {
+      const response = await fetch(activeConnection.modelsUrl, {
+        headers: activeKey ? { Authorization: `Bearer ${activeKey}` } : {},
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error(`Model server returned HTTP ${response.status}.`);
+      const listing = await response.json();
+      if (checkId !== connectionCheckId) return;
+      const ids = Array.isArray(listing.data) ? listing.data.map((item) => item.id).filter((id) => typeof id === 'string') : [];
+      $('modelSuggestions').replaceChildren(...ids.map((id) => {
+        const option = document.createElement('option');
+        option.value = id;
+        return option;
+      }));
+      if (!ids.length) {
+        metalConnected = false;
+        modelConnectionIssue = 'The server returned no models.';
+      } else if (ids.length === 1 && metalModelName === 'qwen35-metal' && !ids.includes(metalModelName)) {
+        metalModelName = ids[0];
+        $('modelId').value = metalModelName;
+        try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: metalConnection.baseUrl, modelId: metalModelName })); } catch { /* Storage is optional. */ }
+        metalConnected = true;
+      } else {
+        metalConnected = ids.includes(metalModelName);
+        if (!metalConnected) modelConnectionIssue = `Model ${metalModelName} is not listed by this server. Choose one in Model ID.`;
+      }
+    } catch (error) {
+      if (checkId !== connectionCheckId) return;
+      metalConnected = false;
+      modelConnectionIssue = error instanceof TypeError
+        ? `Cannot reach ${activeConnection.baseUrl}. Check CORS and Chrome local-network access.`
+        : error.message || `Cannot reach ${activeConnection.baseUrl}.`;
+    }
   }
+  if (checkId !== connectionCheckId) return;
   connectionChecked = true;
   render();
 }
 
 $('checkConnection').addEventListener('click', loadConnection);
+
+$('applyModelSettings').addEventListener('click', () => {
+  if (['running', 'paused'].includes(game.phase)) return;
+  try {
+    const connection = parseModelBaseUrl($('modelBaseUrl').value);
+    const modelId = $('modelId').value.trim();
+    if (!modelId || modelId.length > 200) throw new Error('Enter a model ID of 1–200 characters.');
+    metalConnection = connection;
+    metalEndpoint = connection.endpoint;
+    metalModelName = modelId;
+    metalApiKey = $('modelApiKey').value.trim();
+    useDirectModel = true;
+    metalConnected = false;
+    modelSettingsIssue = '';
+    try { localStorage.setItem(modelSettingsKey, JSON.stringify({ baseUrl: connection.baseUrl, modelId })); } catch { /* Storage is optional. */ }
+    resetGame();
+    void loadConnection();
+  } catch (error) {
+    modelSettingsIssue = error.message;
+    $('modelSettings').open = true;
+    render();
+  }
+});
+
+$('resetModelSettings').addEventListener('click', () => {
+  if (['running', 'paused'].includes(game.phase)) return;
+  try { localStorage.removeItem(modelSettingsKey); } catch { /* Storage is optional. */ }
+  metalConnection = parseModelBaseUrl(defaultModelBaseUrl);
+  metalEndpoint = metalConnection.endpoint;
+  metalModelName = 'qwen35-metal';
+  metalApiKey = '';
+  useDirectModel = hostedBrowserModel;
+  metalConnected = false;
+  modelSettingsIssue = '';
+  $('modelBaseUrl').value = metalConnection.baseUrl;
+  $('modelId').value = metalModelName;
+  $('modelApiKey').value = '';
+  $('modelSuggestions').replaceChildren();
+  resetGame();
+  void loadConnection();
+});
 
 $('spawnSlider').addEventListener('input', (event_) => {
   settings.spawnMs = Number(event_.target.value);
@@ -738,7 +852,7 @@ document.addEventListener('keydown', (event_) => {
 
 renderChart();
 render();
-if (!browserDirectModel) loadConnection();
+if (!hostedBrowserModel) loadConnection();
 setInterval(tick, 10);
 setInterval(() => {
   if (game.phase !== 'running') return;

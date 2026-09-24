@@ -44,3 +44,14 @@
 .impact-popup.gold{background:#57461e;color:#ffe280;border-color:#f2cb69}
 @keyframes hammer-strike{0%{opacity:0;transform:translate(-55%,-128%) rotate(-75deg) scale(.85)}15%{opacity:1}48%{opacity:1;transform:translate(-55%,-85%) rotate(10deg) scale(1)}68%{opacity:1;transform:translate(-55%,-98%) rotate(-18deg)}100%{opacity:0;transform:translate(-55%,-108%) rotate(-25deg)}}
 @keyframes impact-rise{0%{opacity:0;transform:translate(-50%,-40%) scale(.7)}20%{opacity:1;transform:translate(-50%,-95%) scale(1.15)}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-145%) scale(1)}}
+.model-settings{margin-top:10px;border-top:1px solid #3a4b3f;padding-top:9px}
+.model-settings summary{cursor:pointer;color:#eac676;font-size:11px;font-weight:800}
+.model-settings-fields{display:grid;gap:6px;margin-top:12px}
+.model-settings-fields label{color:#91a796;font-size:9px;font-weight:800;letter-spacing:.1em}
+.model-settings-fields label span{color:#718979;font-weight:650;letter-spacing:0}
+.model-settings-fields input{min-width:0;width:100%;background:#0d1916;border:1px solid #4c5b4e;border-radius:7px;color:#eef4e7;padding:8px 10px;font-size:11px;outline:none}
+.model-settings-fields input:focus{border-color:#f5c665}
+.model-settings-actions{display:flex;gap:7px;margin-top:3px}
+.model-settings-actions button{flex:1;border:1px solid #627b5b;border-radius:7px;background:#344735;color:#e1efa8;padding:8px 5px;font-size:10px;font-weight:800}
+.model-settings-actions button:first-child{background:#d5e9ae;color:#1b2d1c}
+.model-settings-fields small{color:#91a793;font-size:10px;line-height:1.4}
