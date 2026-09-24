@@ -22,6 +22,10 @@ vllm serve Qwen/Qwen3.5-0.8B \
 
 In this repository, run `npm start` and open [http://127.0.0.1:4173](http://127.0.0.1:4173). The game server connects to Qwen at `http://127.0.0.1:8012` by default. For another address or served model name, copy `.env.example` to `.env` and set `METAL_BASE_URL` or `METAL_MODEL`. `METAL_API_KEY` adds a bearer token when required.
 
+### Play from a Vercel site
+
+`vercel.json` builds a static site with `npm run build`. Chrome is the supported browser for the hosted local-model path. On the hosted page, **Connect** asks Chrome to reach vLLM-metal at `http://127.0.0.1:8012` on the visitor's own Mac. Run the Qwen command above on that Mac, allow Chrome's local network prompt, then start the round. The board image and text state go straight from the browser to the local model; Vercel does not proxy inference. Human and Demo work without a model. Local Jev remains available through the local `npm start` game server.
+
 ## Play and compare
 
 Choose a player and input on the first screen:

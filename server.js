@@ -2,6 +2,9 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createMetalRequest, parseMetalChoice } from './metal-client.js';
+
+export { parseMetalChoice } from './metal-client.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const model = 'jev-latest';
@@ -10,6 +13,7 @@ const port = Number(process.env.PORT || 4173);
 const assets = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/metal-client.js': ['metal-client.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
 };
 
@@ -95,33 +99,8 @@ export function makeJevRequest({ mode = 'text', holes, image, score, samples = 1
 }
 
 export function makeMetalRequest(input, metalModel) {
-  const jevRequest = makeJevRequest(input); // Share validation and the exact action labels.
-  const occupied = input.mode === 'text' ? input.holes.flatMap((hole, index) => hole
-    ? [`Hole ${index + 1}: ${hole.kind === 'gold' ? 'gold mole' : hole.kind === 'mole' ? 'brown mole' : 'bomb'} (${Math.round(hole.msLeft)} ms left).`]
-    : []) : [];
-  const userContent = input.mode === 'image'
-    ? [
-      { type: 'text', text: 'Which numbered hole contains a visible brown or gold mole face? Ignore score popups and hammers. Reply only h1..h9 or wait.' },
-      { type: 'image_url', image_url: { url: input.image } },
-    ]
-    : `${occupied.length ? `${occupied.join(' ')} Other holes: empty.` : 'All holes are empty.'} Which numbered hole contains a brown or gold mole? Prefer gold. Reply with just the number, or wait if none.`;
-  return {
-    model: metalModel,
-    temperature: 0,
-    max_tokens: 16,
-    structured_outputs: { choice: Object.keys(jevRequest.questions.action.criteria) },
-    messages: [
-      { role: 'user', content: userContent },
-    ],
-  };
-}
-
-export function parseMetalChoice(raw) {
-  if (typeof raw !== 'string') return null;
-  const answer = raw.trim().replace(/^[`"']+|[`"'.!]+$/g, '').toLowerCase();
-  if (/^(h[1-9]|wait)$/.test(answer)) return answer;
-  const number = answer.match(/^(?:hole\s*#?\s*)?0?([1-9])$/);
-  return number ? `h${number[1]}` : null;
+  makeJevRequest(input); // Keep the same bounded input validation for the local proxy.
+  return createMetalRequest(input, metalModel);
 }
 
 export function createAppServer({
