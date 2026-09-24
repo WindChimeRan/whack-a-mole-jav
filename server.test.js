@@ -37,6 +37,7 @@ test('local server checks health and proxies a decision to the structured port',
         model: 'dgemma',
         answers: { action: { type: 'choice', choice: 'h2', confidence: .94, probabilities: { h2: .94 } } },
         usage: { input_tokens: 120, output_tokens: 10 },
+        diagnostics: { timing: { total_ms: 123.4 } },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     },
   });
@@ -54,6 +55,8 @@ test('local server checks health and proxies a decision to the structured port',
     const result = await response.json();
     assert.equal(result.choice, 'h2');
     assert.equal(result.model, 'dgemma');
+    assert.equal(result.modelMs, 123);
+    assert.ok(result.proxyMs >= 0);
     assert.equal(observed.url, 'http://10.0.0.33:8011/v1/systemone');
     assert.equal(observed.options.headers.Authorization, undefined);
     assert.equal(JSON.parse(observed.options.body).questions.action.type, 'choice');

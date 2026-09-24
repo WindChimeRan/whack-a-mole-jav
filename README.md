@@ -18,7 +18,9 @@ Select **DiffusionGemma** to send live requests. The request uses `jev-latest` f
 
 The local app calls `POST http://10.0.0.33:8011/v1/systemone`. **Text state** sends the exact occupant and remaining lifetime of each hole. **Board image** draws a 600×450 canvas that is visible in the arena and sends those same pixels through the API's `images` field. The image request describes the rules and hole numbering, but contains no text list of occupants. Each request asks a `choice` question with ten possible actions: holes 1 through 9, or `wait`. Moles score +1, gold moles +3, and bombs −2. One request is in flight at a time. The board continues to advance while the request runs, so a choice may be stale by the time it arrives.
 
-The response time chart measures the browser's full request-to-answer delay. **Noise draws / decision** controls the recipe's `samples` parameter: 1 is fastest, `auto` repeats uncertain reads, and 4 always averages four reads. The **Decisions sent** counter shows the number attempted in the current round. Select the input mode before starting a round, so each round's metrics belong to one mode.
+The telemetry separates three timings: **DGX decision** comes from the structured server's `diagnostics.timing.total_ms`; **App prep** covers the browser's state snapshot, board drawing, PNG encoding when used, and JSON preparation; **Round trip** covers the browser request through the local proxy and LAN to the DGX server and back. DGX decision is a server-side decision time, not a pure GPU kernel timing. The chart plots DGX decision times. **Noise draws / decision** controls the recipe's `samples` parameter: 1 is fastest, `auto` repeats uncertain reads, and 4 always averages four reads.
+
+The game checks spawns and expirations every 10 ms while refreshing the visible clock and image life bars every 100 ms. It checks expiry again as a model response arrives, before scoring the action. The image board caches its static background and draws only active occupants for each frame. Select the input mode before starting a round, so each round's metrics belong to one mode.
 
 ## Notes
 

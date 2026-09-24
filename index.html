@@ -55,10 +55,11 @@
       <aside class="telemetry">
         <section class="stat-card">
           <div class="card-topline"><div><span class="section-number">02 /</span> LIVE TELEMETRY</div><span id="agentBadge" class="agent-badge">D-GEMMA</span></div>
-          <div class="stat-grid"><div><span>HITS</span><strong id="hitStat">0</strong></div><div><span>ESCAPED</span><strong id="missStat">0</strong></div><div><span>STALE CALLS</span><strong id="staleStat">0</strong></div><div><span>AVG LATENCY</span><strong id="latencyStat">—</strong></div></div>
+          <div class="stat-grid"><div><span>HITS</span><strong id="hitStat">0</strong></div><div><span>ESCAPED</span><strong id="missStat">0</strong></div><div><span>STALE CALLS</span><strong id="staleStat">0</strong></div><div><span id="latencyLabel">DGX DECISION</span><strong id="latencyStat">—</strong></div><div><span>APP PREP</span><strong id="prepStat">—</strong></div><div><span>ROUND TRIP</span><strong id="roundtripStat">—</strong></div></div>
+          <p class="timing-note">DGX decision is server reported. App prep includes frame capture; round trip includes the local proxy and LAN.</p>
           <div class="throughput-row"><span>DECISIONS SENT</span><strong id="decisionStat">0</strong><span>HIT RATE</span><strong id="hitRateStat">—</strong></div>
         </section>
-        <section class="latency-card"><div class="card-topline"><div><span class="section-number">03 /</span> RESPONSE TIME</div><span>LAST 20 CALLS</span></div><div id="latencyBars" class="latency-bars" aria-label="Recent response times"></div><div class="chart-axis"><span>0 ms</span><span>500 ms</span><span>1000+ ms</span></div></section>
+        <section class="latency-card"><div class="card-topline"><div><span class="section-number">03 /</span> <span id="chartTitle">DGX DECISION TIME</span></div><span>LAST 20 CALLS</span></div><div id="latencyBars" class="latency-bars" aria-label="Recent DGX decision times"></div><div class="chart-axis"><span>0 ms</span><span>500 ms</span><span>1000+ ms</span></div></section>
         <section class="feed-card"><div class="card-topline"><div><span class="section-number">04 /</span> PLAY BY PLAY</div><span id="feedCount">0 EVENTS</span></div><ol id="eventFeed" class="event-feed"><li class="feed-empty">The action starts when you launch a round.</li></ol></section>
       </aside>
     </main>

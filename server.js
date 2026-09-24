@@ -150,7 +150,10 @@ export function createAppServer({
           probabilities: answer.probabilities,
           model: result.model || model,
           inputTokens: result.usage?.input_tokens ?? null,
-          latencyMs: Math.round(performance.now() - started),
+          modelMs: Number.isFinite(result.diagnostics?.timing?.total_ms)
+            ? Math.round(result.diagnostics.timing.total_ms)
+            : null,
+          proxyMs: Math.round(performance.now() - started),
         });
       }
 
